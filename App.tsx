@@ -1,15 +1,47 @@
-
-import React, { useState } from 'react';
-import { GameStatus, TurnData } from './types';
+import React, { useState, useEffect } from 'react';
+import { GameStatus, TurnData, HistoryEntry } from './types';
 import { initializeGame } from './services/geminiService';
 import { ScenarioSelector } from './components/ScenarioSelector';
 import { GameInterface } from './components/GameInterface';
-import { RefreshCw, Zap, AlertTriangle } from 'lucide-react';
+import { ApiKeyGateway } from './components/ApiKeyGateway';
+import { RefreshCw, Zap, AlertTriangle, PlayCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [status, setStatus] = useState<GameStatus>(GameStatus.MENU);
   const [initialTurnData, setInitialTurnData] = useState<TurnData | null>(null);
+  const [initialHistoryData, setInitialHistoryData] = useState<HistoryEntry[] | null>(null);
   const [loadingError, setLoadingError] = useState<string | null>(null);
+  const [hasSave, setHasSave] = useState(false);
+  const [hasKey, setHasKey] = useState(() => {
+    const isDev = (import.meta as any).env?.DEV;
+    const localEnvKey = isDev ? (import.meta as any).env?.VITE_GEMINI_API_KEY : null;
+    return !!localStorage.getItem('chronus_api_key') || !!localEnvKey;
+  });
+
+  useEffect(() => {
+    if (localStorage.getItem('chronus_game_state')) {
+      setHasSave(true);
+    }
+  }, []);
+
+  const handleResumeGame = () => {
+    try {
+      const saved = localStorage.getItem('chronus_game_state');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.history && parsed.currentTurnData) {
+          setInitialHistoryData(parsed.history);
+          setInitialTurnData(parsed.currentTurnData);
+          setStatus(GameStatus.PLAYING);
+          return;
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    setHasSave(false);
+    localStorage.removeItem('chronus_game_state');
+  };
 
   const handleStartGame = async (context: string) => {
     setStatus(GameStatus.LOADING);
@@ -29,10 +61,19 @@ const App: React.FC = () => {
   const handleRestart = () => {
     setStatus(GameStatus.MENU);
     setInitialTurnData(null);
+    setInitialHistoryData(null);
+    localStorage.removeItem('chronus_game_state');
+    setHasSave(false);
   };
 
+  if (!hasKey) {
+    return <ApiKeyGateway onUnlock={(key) => {
+      setHasKey(true);
+    }}/>;
+  }
+
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
+    <div className="min-h-screen bg-gray-950 font-sans text-gray-100 flex flex-col">
       {status === GameStatus.MENU && (
         <div className="flex-grow flex flex-col items-center justify-center p-4">
            {loadingError && (
@@ -40,6 +81,20 @@ const App: React.FC = () => {
                <AlertTriangle className="text-red-500 w-8 h-8" />
                <span className="font-mono text-sm">{loadingError}</span>
                <p className="text-xs text-red-400 mt-2">Check your API key quota or connection and try again.</p>
+             </div>
+           )}
+           {hasSave && (
+             <div className="mb-8 w-full max-w-2xl bg-gray-900 border border-emerald-900/50 rounded-lg p-6 flex items-center justify-between shadow-lg">
+               <div>
+                 <h3 className="text-xl font-bold font-mono text-emerald-400">SESSION DETECTED</h3>
+                 <p className="text-sm text-gray-400">An active timeline simulation was found in your local records.</p>
+               </div>
+               <button 
+                 onClick={handleResumeGame}
+                 className="flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold uppercase tracking-wider rounded-lg transition-colors shadow-lg shadow-emerald-900/20"
+               >
+                 <PlayCircle size={20} /> Resume
+               </button>
              </div>
            )}
            <ScenarioSelector onSelect={handleStartGame} />
@@ -58,7 +113,11 @@ const App: React.FC = () => {
       )}
 
       {status === GameStatus.PLAYING && initialTurnData && (
-        <GameInterface initialTurn={initialTurnData} onRestart={handleRestart} />
+        <GameInterface 
+           initialTurn={initialTurnData} 
+           initialHistory={initialHistoryData || undefined}
+           onRestart={handleRestart} 
+        />
       )}
     </div>
   );

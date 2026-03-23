@@ -5,9 +5,12 @@ import { TurnData, HistoryEntry, SimulationManifest, Advisor } from '../types';
 import { calculateOutcome } from './mechanics';
 
 const getClient = () => {
-  const apiKey = process.env.API_KEY;
+  // Allow local VITE env for dev, but default to localStorage for BYOK version.
+  // CRITICAL SECURITY FIX: Never include the local .env key in production builds.
+  const localKey = (import.meta as any).env?.DEV ? (import.meta as any).env?.VITE_GEMINI_API_KEY : null;
+  const apiKey = localStorage.getItem('chronus_api_key') || localKey;
   if (!apiKey) {
-    throw new Error("API_KEY environment variable is not set.");
+    throw new Error("API_KEY is not set. Please provide a Gemini API Key.");
   }
   return new GoogleGenAI({ apiKey });
 };
@@ -309,9 +312,9 @@ const enrichScenario = async (baseContext: string): Promise<string> => {
 
   try {
     const response = await withRetry(() => ai.models.generateContent({
-        model: 'gemini-3.1-pro-preview',
+        model: 'gemini-2.5-flash',
         contents: prompt,
-        config: { maxOutputTokens: 8192, thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH } }
+        config: { maxOutputTokens: 8192 }
     })) as GenerateContentResponse;
     return response.text || baseContext;
   } catch (e) {
@@ -342,13 +345,12 @@ export const initializeGame = async (scenarioContext: string): Promise<TurnData>
 
   try {
     const response = await withRetry(() => ai.models.generateContent({
-      model: 'gemini-3.1-pro-preview',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: turnSchema,
-        maxOutputTokens: 20000,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
+        maxOutputTokens: 20000
       }
     })) as GenerateContentResponse;
 
@@ -372,9 +374,11 @@ export const processTurn = async (
   const latestState = currentHistory[currentHistory.length - 1];
   const manifest = latestState.manifestSnapshot;
   
-  const historyLog = currentHistory.map(h => 
-    `[Turn ${h.turnNumber} | ${h.year}] Event: ${h.eventTitle}. Choice: ${h.userChoice || "None"}. Goal Status: ${h.goalSnapshot.turnsRemaining} turns left on "${h.goalSnapshot.description}".`
-  ).join("\n");
+  const recentHistory = currentHistory.slice(-10);
+  const historyLog = (currentHistory.length > 10 ? "... [Prior history archived. See structured state for current world reality] ...\n" : "") + 
+    recentHistory.map(h => 
+      `[Turn ${h.turnNumber} | ${h.year}] Event: ${h.eventTitle}. Choice: ${h.userChoice || "None"}. Goal Status: ${h.goalSnapshot.turnsRemaining} turns left on "${h.goalSnapshot.description}".`
+    ).join("\n");
 
   const actionDescription = customInput 
     ? `Player input custom directive: "${customInput}"\nCONTEXTUAL ANALYSIS: ${choiceDetails || 'None'}` 
@@ -489,13 +493,12 @@ export const processTurn = async (
 
   try {
     const response = await withRetry(() => ai.models.generateContent({
-      model: 'gemini-3.1-pro-preview',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: turnSchema,
         maxOutputTokens: 20000,
-        thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH }
       }
     })) as GenerateContentResponse;
 
