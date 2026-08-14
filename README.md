@@ -69,4 +69,5 @@ All model IDs, output limits, temperatures, and timeouts are centralized in `eng
 - Saved campaigns live only in the current browser profile unless exported.
 - Clearing site data deletes IndexedDB campaigns.
 - OpenRouter requests receive only the state permitted for that model role.
-- The local owner can inspect declassified developer audits; anti-cheat against the owner is intentionally out of scope.
+- Raw turn audits remain available in campaign exports and IndexedDB, but are not rendered in the player interface by default.
+- During local development only, set `VITE_ENABLE_DEVELOPER_AUDIT=true` to expose the spoiler-heavy developer trace. Production builds never render that control.

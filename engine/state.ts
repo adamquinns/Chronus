@@ -6,10 +6,65 @@ import {
   ValidationIssue,
   WorldFact,
   WorldState,
+  GoalCondition,
 } from './domain';
 import { calibratedMagnitude } from './calibration';
+import { canAccess, visibility } from './visibility';
 
 const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
+
+const goalValue = (state: WorldState, condition: GoalCondition): unknown => {
+  if (condition.targetType === 'METRIC') return condition.field === 'value' ? state.metrics[condition.targetId] : undefined;
+  if (condition.targetType === 'RESOURCE') return state.resources[condition.targetId]?.[condition.field as 'amount'];
+  if (condition.targetType === 'ENTITY') return state.entities[condition.targetId]?.[condition.field as 'status'];
+  if (condition.targetType === 'ARC') return state.arcs[condition.targetId]?.[condition.field as 'progress'];
+  if (condition.targetType === 'FACT') return state.facts[condition.targetId];
+  return undefined;
+};
+
+const conditionMet = (state: WorldState, condition: GoalCondition) => {
+  const actual = goalValue(state, condition);
+  if (condition.operator === 'EXISTS') return actual !== undefined;
+  if (condition.operator === 'NOT_EXISTS') return actual === undefined;
+  if (condition.operator === 'EQ') return actual === condition.value;
+  if (typeof actual !== 'number' || typeof condition.value !== 'number') return false;
+  if (condition.operator === 'LT') return actual < condition.value;
+  if (condition.operator === 'LTE') return actual <= condition.value;
+  if (condition.operator === 'GTE') return actual >= condition.value;
+  return actual > condition.value;
+};
+
+export const evaluateGoal = (state: WorldState): WorldState => {
+  const next = structuredClone(state);
+  if (next.goal.status !== 'ACTIVE') return next;
+  const matches = (rules: GoalCondition[], mode: 'ALL' | 'ANY') =>
+    rules.length > 0 && (mode === 'ALL' ? rules.every((rule) => conditionMet(next, rule)) : rules.some((rule) => conditionMet(next, rule)));
+  let transition: 'ACHIEVED' | 'FAILED' | 'DEADLINE' | undefined;
+  if (matches(next.goal.failureRules, next.goal.failureMode)) {
+    next.goal.status = 'FAILED';
+    next.goal.outcomeClass = 'CATASTROPHIC_DEFEAT';
+    next.gameOver = next.goal.terminalOnFailure;
+    transition = 'FAILED';
+  } else if (matches(next.goal.victoryRules, next.goal.victoryMode)) {
+    next.goal.status = 'ACHIEVED';
+    next.goal.outcomeClass = 'VICTORY';
+    next.gameOver = next.goal.terminalOnAchievement;
+    transition = 'ACHIEVED';
+  } else if (next.turn >= next.goal.deadlineTurn) {
+    next.goal.status = 'FAILED';
+    next.goal.outcomeClass = 'STRATEGIC_DEFEAT';
+    next.gameOver = next.goal.terminalOnFailure;
+    transition = 'DEADLINE';
+  }
+  if (transition && !next.gameOver) {
+    const successor = next.goal.successors?.find((candidate) => candidate.on === transition);
+    if (successor) {
+      next.goal = structuredClone(successor.goal);
+      next.gameOver = false;
+    }
+  }
+  return next;
+};
 
 export const cloneWorld = (state: WorldState): WorldState => structuredClone(state);
 
@@ -103,7 +158,8 @@ export const commitEffects = (
     });
   };
 
-  for (const effect of effects) {
+  const queue = [...effects];
+  for (const effect of queue) {
     if (effect.targetType === 'METRIC') {
       const definition = state.manifest.metricDefinitions.find((item) => item.id === effect.targetId);
       if (!definition || typeof state.metrics[effect.targetId] !== 'number') continue;
@@ -147,22 +203,53 @@ export const commitEffects = (
       const before = arc.progress;
       const result = applyNumeric(before, effect, state, effect.targetId, 0, arc.threshold);
       arc.progress = result.after;
-      if (arc.progress >= arc.threshold) arc.status = 'RESOLVED';
       record(effect, before, result.after, result.after - before);
+      if (arc.progress >= arc.threshold && arc.status !== 'RESOLVED') {
+        const statusBefore = arc.status;
+        arc.status = 'RESOLVED';
+        record({ ...effect, id: `${effect.id}_resolution`, field: 'status', cause: `${arc.title} reached its resolution threshold.` }, statusBefore, arc.status);
+        queue.push(...arc.onResolve);
+      }
     } else if (effect.targetType === 'FACT') {
       const proposed = effect as ProposedEffect;
+      const existing = state.facts[effect.targetId];
+      if (existing && effect.field === 'discover') {
+        const before = structuredClone(existing.visibility);
+        const viewerId = effect.actorId ?? state.manifest.playerId;
+        existing.visibility.actorIds = [...new Set([...existing.visibility.actorIds, viewerId])];
+        if (viewerId === state.manifest.playerId && existing.visibility.classification === 'SIMULATION_SECRET') {
+          existing.visibility.classification = 'ACTOR_KNOWN';
+        }
+        record(effect, before, structuredClone(existing.visibility));
+        continue;
+      }
       if (typeof proposed.setValue !== 'string') continue;
       const fact: WorldFact = {
         id: effect.targetId,
         statement: proposed.setValue,
         provenance: 'SIMULATED_POST_DIVERGENCE',
         confidence: effect.confidence,
-        knownBy: effect.actorId ? [effect.actorId] : [state.manifest.playerId],
+        visibility: effect.actorId
+          ? visibility('ACTOR_KNOWN', [effect.actorId])
+          : visibility('PLAYER_KNOWN', [state.manifest.playerId]),
+        sourceRefs: [],
         createdTurn: state.turn + 1,
       };
       const before = state.facts[effect.targetId];
       state.facts[effect.targetId] = fact;
       record(effect, before, fact);
+    } else if (effect.targetType === 'PROCESS') {
+      const proposed = effect as ProposedEffect;
+      const existing = state.pendingProcesses[effect.targetId];
+      if (existing && effect.field === 'status' && proposed.setValue === 'COMPLETED') {
+        const before = existing.completed;
+        existing.completed = true;
+        record(effect, before, true);
+      } else if (!existing && effect.field === 'status' && proposed.setValue && typeof proposed.setValue === 'object') {
+        const process = proposed.setValue as typeof state.pendingProcesses[string];
+        state.pendingProcesses[effect.targetId] = structuredClone(process);
+        record(effect, undefined, process);
+      }
     } else if (effect.targetType === 'GOAL' && effect.field === 'status') {
       const next = (effect as ProposedEffect).setValue;
       if (next === 'ACTIVE' || next === 'ACHIEVED' || next === 'FAILED') {
@@ -176,20 +263,30 @@ export const commitEffects = (
 
   state.revision += 1;
   state.turn += 1;
-  state.rngCursor += 1;
-  if (state.goal.status === 'ACTIVE' && state.turn >= state.goal.deadlineTurn) {
-    state.goal.status = 'FAILED';
-    state.gameOver = true;
-  }
-  const issues = validateWorld(state);
-  return { state, changes, issues };
+  const evaluated = evaluateGoal(state);
+  const issues = validateWorld(evaluated);
+  return { state: evaluated, changes, issues };
 };
 
 export const evolvePendingProcesses = (state: WorldState): ProposedEffect[] => {
   const effects: ProposedEffect[] = [];
   for (const process of Object.values(state.pendingProcesses)) {
-    if (process.dueTurn <= state.turn + 1 || process.progress >= process.requiredProgress) {
+    if (!process.completed && (process.dueTurn <= state.turn + 1 || process.progress >= process.requiredProgress)) {
       effects.push(...process.onMature);
+      effects.push({
+        id: `complete_${process.id}_${state.turn + 1}`,
+        mechanismId: process.id,
+        targetType: 'PROCESS',
+        targetId: process.id,
+        field: 'status',
+        direction: 'NEUTRAL',
+        impactClass: 'NONE',
+        confidence: 'VERY_HIGH',
+        engagement: 'ENGAGES_STRONGLY',
+        cause: `${process.label} completed and will not mature again.`,
+        dependencies: [],
+        setValue: 'COMPLETED',
+      });
     }
   }
   return effects;
@@ -201,47 +298,67 @@ export const updateBeliefsFromChanges = (
   state: WorldState,
 ): BeliefState => {
   const next = structuredClone(beliefs);
+  const observers = [next.player, ...Object.values(next.actors)];
+  const ruleFor = (change: StateChange) => {
+    if (change.targetType === 'METRIC') return state.manifest.metricDefinitions.find((item) => item.id === change.targetId)?.visibility;
+    if (change.targetType === 'RESOURCE') return state.resources[change.targetId]?.visibility;
+    if (change.targetType === 'ENTITY') return state.entities[change.targetId]?.fieldVisibility[change.field as keyof typeof state.entities[string]['fieldVisibility']]
+      ?? state.entities[change.targetId]?.visibility;
+    if (change.targetType === 'RELATIONSHIP') return state.relationships[change.targetId]?.visibility;
+    if (change.targetType === 'ARC') return state.arcs[change.targetId]?.visibility;
+    if (change.targetType === 'FACT') return state.facts[change.targetId]?.visibility;
+    if (change.targetType === 'PROCESS') return state.pendingProcesses[change.targetId]?.visibility;
+    return visibility('PLAYER_KNOWN', [state.manifest.playerId]);
+  };
+
   for (const change of changes) {
+    const rule = ruleFor(change);
+    const informed = rule
+      ? observers.filter((observer) => canAccess(rule, observer.actorId, state.manifest.playerId, state.gameOver))
+      : [];
     if (change.targetType === 'METRIC' && typeof change.after === 'number') {
       const key = `${change.targetId}.${change.field}`;
-      const definition = state.manifest.metricDefinitions.find((item) => item.id === change.targetId);
-      const learned = {
-        subjectId: change.targetId,
-        field: change.field,
-        range: [Math.max(0, change.after - 5), Math.min(100, change.after + 5)] as [number, number],
-        estimate: change.after,
-        confidence: 'HIGH' as const,
-        sourceFactIds: [],
-        updatedTurn: state.turn,
-      };
-      next.player.beliefs[key] = learned;
-      if (!definition?.hidden) {
-        for (const actor of Object.values(next.actors)) actor.beliefs[key] = { ...learned, confidence: 'MEDIUM' };
+      for (const observer of informed) {
+        const isPlayer = observer.actorId === state.manifest.playerId;
+        observer.beliefs[key] = {
+          subjectId: change.targetId,
+          field: change.field,
+          range: [Math.max(0, change.after - (isPlayer ? 5 : 8)), Math.min(100, change.after + (isPlayer ? 5 : 8))],
+          estimate: change.after,
+          confidence: isPlayer ? 'HIGH' : 'MEDIUM',
+          sourceFactIds: [],
+          updatedTurn: state.turn,
+        };
       }
     }
-    if (change.targetType === 'ENTITY' && next.actors[change.targetId]) {
-      next.actors[change.targetId].beliefs[`self.${change.field}`] = {
-        subjectId: change.targetId,
-        field: change.field,
-        categorical: String(change.after),
-        confidence: 'VERY_HIGH',
-        sourceFactIds: [],
-        updatedTurn: state.turn,
-      };
+    if (change.targetType === 'ENTITY') {
+      for (const observer of informed) {
+        observer.beliefs[`${change.targetId}.${change.field}`] = {
+          subjectId: change.targetId,
+          field: change.field,
+          categorical: String(change.after),
+          confidence: observer.actorId === change.targetId ? 'VERY_HIGH' : 'MEDIUM',
+          sourceFactIds: [],
+          updatedTurn: state.turn,
+        };
+      }
     }
     if (change.targetType === 'ARC' && typeof change.after === 'number') {
       const key = `${change.targetId}.progress`;
-      const learned = {
+      for (const observer of informed) observer.beliefs[key] = {
         subjectId: change.targetId,
         field: 'progress',
         estimate: change.after,
-        range: [Math.max(0, change.after - 8), Math.min(100, change.after + 8)] as [number, number],
-        confidence: 'MEDIUM' as const,
+        range: [Math.max(0, change.after - 8), Math.min(100, change.after + 8)],
+        confidence: observer.actorId === state.manifest.playerId ? 'MEDIUM' : 'LOW',
         sourceFactIds: [],
         updatedTurn: state.turn,
       };
-      next.player.beliefs[key] = learned;
-      for (const actor of Object.values(next.actors)) actor.beliefs[key] = { ...learned, confidence: 'LOW' };
+    }
+    if (change.targetType === 'FACT') {
+      for (const observer of informed) {
+        if (!observer.knownFactIds.includes(change.targetId)) observer.knownFactIds.push(change.targetId);
+      }
     }
   }
   return next;

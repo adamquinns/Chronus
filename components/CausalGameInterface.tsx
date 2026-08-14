@@ -2,11 +2,16 @@ import React, { useMemo, useState } from 'react';
 import {
   AlertTriangle, Archive, BrainCircuit, ChevronDown, ChevronUp, Database, Download,
   Eye, FileSearch, Globe2, Loader2, LogOut, Play, Save, ShieldCheck, Sparkles,
+  MessagesSquare,
+  LockOpen,
 } from 'lucide-react';
-import { Campaign, EntityState, TurnProgress } from '../engine/domain';
+import { AdvisorAssessment, Campaign, TurnPreview, TurnProgress } from '../engine/domain';
 import { ModelGateway } from '../engine/model';
 import { runTurn } from '../engine/pipeline';
-import { exportCampaign } from '../engine/persistence';
+import { exportCampaign, saveCampaign } from '../engine/persistence';
+import { isDeveloperAuditEnabled, projectPlayerVisibleChanges } from './playerVisibility';
+import { playerVisibleState } from '../engine/projections';
+import { consultAdvisors } from '../engine/advisors';
 
 interface Props {
   initialCampaign: Campaign;
@@ -36,27 +41,42 @@ export const CausalGameInterface: React.FC<Props> = ({ initialCampaign, gateway,
   const [directive, setDirective] = useState('');
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<TurnProgress[]>([]);
+  const [preview, setPreview] = useState<TurnPreview>();
   const [error, setError] = useState<string>();
   const [showLedger, setShowLedger] = useState(false);
   const [showWhy, setShowWhy] = useState(false);
   const [developerMode, setDeveloperMode] = useState(false);
+  const [declassificationMode, setDeclassificationMode] = useState(false);
+  const [advisorQuestion, setAdvisorQuestion] = useState('');
+  const [advisorAnswers, setAdvisorAnswers] = useState<AdvisorAssessment[]>([]);
+  const [consulting, setConsulting] = useState(false);
   const latest = campaign.audits.at(-1);
-  const metrics = campaign.state.manifest.metricDefinitions.filter((item) => !item.hidden);
+  const visibleState = useMemo(() => playerVisibleState(campaign.state, campaign.beliefs), [campaign]);
+  const metrics = visibleState.visibleMetrics;
+  const developerAuditsEnabled = isDeveloperAuditEnabled(
+    import.meta.env.DEV,
+    import.meta.env.VITE_ENABLE_DEVELOPER_AUDIT,
+  );
+  const playerVisibleChanges = useMemo(
+    () => latest ? projectPlayerVisibleChanges(campaign, latest) : [],
+    [campaign, latest],
+  );
 
-  const knownFacts = useMemo(() => campaign.beliefs.player.knownFactIds
-    .map((id) => campaign.state.facts[id])
-    .filter(Boolean), [campaign]);
+  const knownFacts = visibleState.knownFacts;
 
   const execute = async () => {
     if (!directive.trim() || running) return;
     setRunning(true);
     setError(undefined);
     setProgress([]);
+    setPreview(undefined);
     try {
       const result = await runTurn(campaign, directive, {
         gateway,
         persist: true,
+        storage: { save: saveCampaign },
         onProgress: (item) => setProgress((current) => [...current.filter((entry) => entry.stage !== item.stage), item]),
+        onPreview: setPreview,
       });
       setCampaign(result.campaign);
       onCampaignChange(result.campaign);
@@ -65,6 +85,19 @@ export const CausalGameInterface: React.FC<Props> = ({ initialCampaign, gateway,
       setError(caught instanceof Error ? caught.message : 'Turn resolution failed.');
     } finally {
       setRunning(false);
+    }
+  };
+
+  const consult = async () => {
+    if (!advisorQuestion.trim() || consulting) return;
+    setConsulting(true);
+    setError(undefined);
+    try {
+      setAdvisorAnswers(await consultAdvisors(campaign, advisorQuestion, gateway));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Advisor consultation failed.');
+    } finally {
+      setConsulting(false);
     }
   };
 
@@ -77,17 +110,19 @@ export const CausalGameInterface: React.FC<Props> = ({ initialCampaign, gateway,
             <div className="text-xs text-gray-500">{campaign.state.dateLabel} · Turn {campaign.state.turn}</div>
           </div>
           <button onClick={() => setShowLedger(!showLedger)} className="p-2 text-gray-400 hover:text-white" title="World ledger"><Database size={18}/></button>
-          <button onClick={() => setDeveloperMode(!developerMode)} className={`p-2 ${developerMode ? 'text-amber-400' : 'text-gray-400'} hover:text-white`} title="Developer/declassification mode"><FileSearch size={18}/></button>
+          {developerAuditsEnabled && <button onClick={() => setDeveloperMode(!developerMode)} className={`p-2 ${developerMode ? 'text-amber-400' : 'text-gray-400'} hover:text-white`} title="Developer trace (contains spoilers)"><FileSearch size={18}/></button>}
+          {campaign.state.gameOver && <button onClick={() => setDeclassificationMode(!declassificationMode)} className={`p-2 ${declassificationMode ? 'text-cyan-300' : 'text-gray-400'} hover:text-white`} title="Post-game declassification"><LockOpen size={18}/></button>}
           <button onClick={() => downloadText(`chronus-${campaign.state.campaignId}.json`, exportCampaign(campaign))} className="p-2 text-gray-400 hover:text-white" title="Export campaign"><Download size={18}/></button>
           <button onClick={onExit} className="p-2 text-gray-400 hover:text-white" title="Exit"><LogOut size={18}/></button>
         </div>
         <div className="max-w-7xl mx-auto px-4 pb-3 grid grid-cols-2 md:grid-cols-6 gap-2">
           {metrics.map((definition) => {
-            const value = campaign.state.metrics[definition.id];
+            const value = definition.estimate;
             const danger = (definition.dangerAbove !== undefined && value >= definition.dangerAbove) || (definition.dangerBelow !== undefined && value <= definition.dangerBelow);
             return <div key={definition.id} className="bg-gray-900 border border-gray-800 rounded p-2">
               <div className="text-[10px] text-gray-500 uppercase font-mono truncate">{definition.label}</div>
-              <div className={`text-lg font-mono font-bold ${danger ? 'text-red-400' : 'text-emerald-400'}`}>{value}</div>
+              <div className={`text-lg font-mono font-bold ${danger ? 'text-red-400' : 'text-emerald-400'}`}>{definition.range ? `${definition.range[0]}–${definition.range[1]}` : value}</div>
+              <div className="text-[9px] text-gray-600 font-mono">{definition.confidence} confidence</div>
             </div>;
           })}
         </div>
@@ -99,6 +134,20 @@ export const CausalGameInterface: React.FC<Props> = ({ initialCampaign, gateway,
           <h2 className="text-xl font-bold">{campaign.state.goal.title}</h2>
           <p className="text-gray-400 mt-1">{campaign.state.goal.description}</p>
           <div className="text-xs text-gray-500 mt-3">Deadline: turn {campaign.state.goal.deadlineTurn} · Status: {campaign.state.goal.status}</div>
+        </section>
+
+        <section className="bg-gray-900 border border-gray-800 rounded-xl p-5">
+          <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-widest text-cyan-400 mb-2"><MessagesSquare size={15}/> Consult advisors — no turn cost</div>
+          <p className="text-sm text-gray-500">Ask for judgment without advancing time. Advisors use their expertise, worldview, bias, and only information available to your role.</p>
+          <div className="mt-3 flex flex-col sm:flex-row gap-2">
+            <input value={advisorQuestion} onChange={(event) => setAdvisorQuestion(event.target.value)} placeholder="What are we underestimating?" className="flex-1 bg-black border border-gray-700 rounded p-3 text-sm focus:border-cyan-500 focus:outline-none"/>
+            <button onClick={consult} disabled={!advisorQuestion.trim() || consulting} className="px-4 py-2 bg-cyan-800 hover:bg-cyan-700 disabled:opacity-40 rounded font-mono text-sm">{consulting ? 'Consulting…' : 'Ask'}</button>
+          </div>
+          {advisorAnswers.length > 0 && <div className="mt-4 grid gap-3">{advisorAnswers.map((answer) => <div key={answer.advisorId} className="bg-black/30 border border-gray-800 rounded p-3">
+            <div className="font-bold text-cyan-200">{answer.advisorName} <span className="text-[10px] text-gray-600 font-mono">{answer.confidence}</span></div>
+            <p className="mt-1 text-sm text-gray-300">{answer.assessment}</p>
+            <p className="mt-2 text-[11px] text-amber-700">Known bias: {answer.biasDisclosure}</p>
+          </div>)}</div>}
         </section>
 
         {!latest ? (
@@ -118,11 +167,12 @@ export const CausalGameInterface: React.FC<Props> = ({ initialCampaign, gateway,
               <Eye size={15}/> Why did this happen? {showWhy ? <ChevronUp size={14}/> : <ChevronDown size={14}/>} 
             </button>
             {showWhy && <div className="bg-black/30 border border-gray-800 rounded p-4 space-y-3">
-              <p className="text-sm text-gray-300">{latest.adjudication.summary}</p>
-              {latest.stateChanges.map((change) => <div key={change.id} className="text-xs font-mono text-gray-400 border-l-2 border-amber-800 pl-3">
-                {change.targetId}: {String(change.before)} → {String(change.after)} · {change.cause}
+              <p className="text-sm text-gray-300">These are the committed effects your role can currently observe.</p>
+              {playerVisibleChanges.map((change) => <div key={change.id} className="text-xs text-gray-400 border-l-2 border-amber-800 pl-3">
+                <div className="font-mono">{change.label}: {String(change.before)} → {String(change.after)}</div>
+                <div className="mt-1">{change.explanation}</div>
               </div>)}
-              <p className="text-[11px] text-gray-600">This view reveals attributable committed effects, but not hidden facts the player has not learned.</p>
+              <p className="text-[11px] text-gray-600">Only observable, committed effects are shown here. Hidden actors, beliefs, probabilities, and unresolved world processes remain concealed.</p>
             </div>}
           </section>
         )}
@@ -130,17 +180,24 @@ export const CausalGameInterface: React.FC<Props> = ({ initialCampaign, gateway,
         {showLedger && <section className="bg-gray-900 border border-gray-800 rounded-xl p-5">
           <h2 className="flex items-center gap-2 font-mono text-emerald-400 mb-4"><Globe2 size={18}/> STRATEGIC LEDGER</h2>
           <div className="grid md:grid-cols-2 gap-3">
-            {(Object.values(campaign.state.entities) as EntityState[]).map((entity) => <div key={entity.id} className="bg-gray-950 border border-gray-800 rounded p-3">
-              <div className="font-bold">{entity.name}</div><div className="text-xs text-gray-500">{entity.kind} · {entity.status}</div>
-              <p className="text-sm text-gray-400 mt-2">{entity.description}</p>
+            {visibleState.entityDirectory.map((entity) => <div key={entity!.id} className="bg-gray-950 border border-gray-800 rounded p-3">
+              <div className="font-bold">{entity!.name}</div><div className="text-xs text-gray-500">{entity!.kind}{entity!.status ? ` · ${entity!.status}` : ''}</div>
+              <p className="text-sm text-gray-400 mt-2">{entity!.description}</p>
             </div>)}
           </div>
           <div className="mt-5"><div className="text-xs uppercase font-mono text-blue-400 mb-2">Known facts</div>{knownFacts.map((fact) => <p key={fact.id} className="text-sm text-gray-400 mb-1">• {fact.statement} <span className="text-gray-600">({fact.confidence})</span></p>)}</div>
         </section>}
 
-        {developerMode && latest && <section className="bg-black border border-amber-900/50 rounded-xl p-5 font-mono text-xs overflow-auto">
-          <div className="text-amber-400 mb-3">DECLASSIFIED DEVELOPER AUDIT</div>
+        {developerAuditsEnabled && developerMode && latest && <section className="bg-black border border-amber-900/50 rounded-xl p-5 font-mono text-xs overflow-auto">
+          <div className="text-amber-400 mb-1">DEVELOPER TRACE — CONTAINS SPOILERS</div>
+          <div className="text-amber-700 mb-3">Not part of the player experience. Includes hidden state and model diagnostics.</div>
           <pre className="text-gray-400 whitespace-pre-wrap">{JSON.stringify(latest, null, 2)}</pre>
+        </section>}
+
+        {campaign.state.gameOver && declassificationMode && <section className="bg-black border border-cyan-900/50 rounded-xl p-5 font-mono text-xs overflow-auto">
+          <div className="text-cyan-300 mb-1">POST-GAME DECLASSIFICATION — COMPLETE CAUSAL RECORD</div>
+          <div className="text-cyan-800 mb-3">True state, beliefs, visibility decisions, actor packets, model traces, uncertainty, diffs, and all turn audits.</div>
+          <pre className="text-gray-400 whitespace-pre-wrap">{JSON.stringify(campaign, null, 2)}</pre>
         </section>}
 
         <section className="bg-gray-900 border border-gray-700 rounded-xl p-5">
@@ -153,7 +210,16 @@ export const CausalGameInterface: React.FC<Props> = ({ initialCampaign, gateway,
           {error && <div className="mt-3 text-sm text-red-400 flex gap-2"><AlertTriangle size={17}/>{error}</div>}
           {running && <div className="mt-4 bg-black/30 rounded p-4 space-y-2">
             <div className="flex items-center gap-2 text-emerald-400 text-sm font-mono"><Loader2 className="animate-spin" size={16}/> Deep simulation in progress</div>
-            {progress.map((item) => <div key={item.stage} className="text-xs text-gray-500"><span className="text-gray-300">✓ {item.label}</span>{item.detail ? ` — ${item.detail}` : ''}</div>)}
+            {preview && <div className="my-3 border border-gray-800 rounded p-3 text-xs space-y-2">
+              <div><span className="text-blue-400 font-mono uppercase">Your strategy</span><div className="text-gray-300 mt-1">{preview.strategy}</div></div>
+              {preview.advantages.length > 0 && <div><span className="text-emerald-500 font-mono uppercase">Advantages</span>{preview.advantages.map((item) => <div key={item} className="text-gray-500 mt-1">• {item}</div>)}</div>}
+              {preview.uncertainties.length > 0 && <div><span className="text-amber-500 font-mono uppercase">Uncertainties</span>{preview.uncertainties.map((item) => <div key={item} className="text-gray-500 mt-1">• {item}</div>)}</div>}
+              <div><span className="text-red-400 font-mono uppercase">What is at stake</span>{preview.stakes.map((item) => <div key={item} className="text-gray-500 mt-1">• {item}</div>)}</div>
+              {preview.advisorAssessments.length > 0 && <div><span className="text-cyan-400 font-mono uppercase">Advisor assessment</span>{preview.advisorAssessments.map((item) => <div key={item} className="text-gray-500 mt-1">• {item}</div>)}</div>}
+              {preview.intelligenceNotes.length > 0 && <div><span className="text-blue-400 font-mono uppercase">Intelligence notes</span>{preview.intelligenceNotes.map((item) => <div key={item} className="text-gray-500 mt-1">• {item}</div>)}</div>}
+              {preview.strategicTradeoffs.length > 0 && <div><span className="text-purple-400 font-mono uppercase">Strategic tradeoff</span>{preview.strategicTradeoffs.map((item) => <div key={item} className="text-gray-500 mt-1">• {item}</div>)}</div>}
+            </div>}
+            {progress.map((item) => <div key={item.stage} className="text-xs text-gray-500"><span className="text-gray-300">{item.status === 'COMPLETED' ? '✓' : '•'} {item.label}</span>{item.detail ? ` — ${item.detail}` : ''}</div>)}
           </div>}
           <button onClick={execute} disabled={!directive.trim() || running || campaign.state.gameOver} className="mt-4 w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-bold font-mono rounded flex items-center justify-center gap-2">
             {running ? <Loader2 className="animate-spin" size={18}/> : gateway ? <Sparkles size={18}/> : <Play size={18}/>} Commit strategy

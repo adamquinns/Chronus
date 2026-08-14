@@ -2,14 +2,24 @@ import { Campaign, CausalPrecedent, ProposedEffect, StrategyGraph, WorldState } 
 
 export const retrievePrecedents = (campaign: Campaign, graph: StrategyGraph, limit = 12): CausalPrecedent[] => {
   const currentKinds = new Set(graph.mechanisms.map((mechanism) => mechanism.kind));
-  const results: CausalPrecedent[] = [];
+  const currentActors = new Set(graph.mechanisms.flatMap((mechanism) => [...mechanism.actorIds, ...mechanism.targetIds]));
+  const internal: CausalPrecedent[] = [];
   for (const audit of [...campaign.audits].reverse()) {
     const kindsByMechanism = new Map(audit.dryStrategy.mechanisms.map((mechanism) => [mechanism.id, mechanism.kind]));
+    const actorsByMechanism = new Map(audit.dryStrategy.mechanisms.map((mechanism) => [mechanism.id, [...mechanism.actorIds, ...mechanism.targetIds]]));
     for (const change of audit.stateChanges) {
       const effect = audit.adjudication.recommendedEffects.find((item) => item.id === change.sourceEffectId);
       const mechanismKind = kindsByMechanism.get(effect?.mechanismId ?? '');
       if (!mechanismKind || !currentKinds.has(mechanismKind)) continue;
-      results.push({
+      const actorOverlap = (actorsByMechanism.get(effect?.mechanismId ?? '') ?? []).filter((id) => currentActors.has(id)).length;
+      const targetMatch = graph.mechanisms.some((mechanism) => mechanism.targetIds.includes(change.targetId));
+      const oldTension = audit.previousStateSnapshot?.metrics.nuclear_tension;
+      const currentTension = campaign.state.metrics.nuclear_tension;
+      const crisisDistance = typeof oldTension === 'number' && typeof currentTension === 'number' ? Math.abs(oldTension - currentTension) : 25;
+      internal.push({
+        source: 'INTERNAL',
+        sourceId: audit.id,
+        relevanceScore: 5 + (targetMatch ? 3 : 0) + Math.min(2, actorOverlap) + Math.max(0, 2 - crisisDistance / 20),
         turn: audit.turn,
         mechanismKind,
         targetId: change.targetId,
@@ -17,12 +27,32 @@ export const retrievePrecedents = (campaign: Campaign, graph: StrategyGraph, lim
         impactClass: change.impactClass,
         appliedDelta: change.appliedDelta,
         cause: change.cause,
-        contextualDifference: 'Prior event in the same simulation; compare current resources, actors, and escalation state.',
+        contextualDifference: `Same-world event; actor overlap ${actorOverlap}, target ${targetMatch ? 'matches' : 'differs'}, crisis-distance ${crisisDistance.toFixed(0)}.`,
       });
-      if (results.length >= limit) return results;
     }
   }
-  return results;
+  const analogs: CausalPrecedent[] = campaign.state.manifest.historicalAnalogs
+    .filter((analog) => currentKinds.has(analog.mechanismKind))
+    .map((analog) => ({
+      source: 'HISTORICAL_ANALOG',
+      sourceId: analog.id,
+      relevanceScore: 6 + (graph.mechanisms.some((mechanism) => mechanism.targetIds.includes(analog.targetId)) ? 2 : 0),
+      turn: 0,
+      mechanismKind: analog.mechanismKind,
+      targetId: analog.targetId,
+      field: 'value',
+      impactClass: analog.impactClass,
+      cause: analog.label,
+      contextualDifference: `${analog.context} Compare scale, institutions, actors, starting state, and time horizon before applying.`,
+    }));
+  const sameWorldWeight = Math.min(1, campaign.state.turn / 6);
+  return [...analogs, ...internal]
+    .sort((a, b) => {
+      const weightedA = a.relevanceScore * (a.source === 'INTERNAL' ? sameWorldWeight : 1 - sameWorldWeight * 0.5);
+      const weightedB = b.relevanceScore * (b.source === 'INTERNAL' ? sameWorldWeight : 1 - sameWorldWeight * 0.5);
+      return weightedB - weightedA || b.turn - a.turn;
+    })
+    .slice(0, limit);
 };
 
 export const historicalPriorWeight = (state: WorldState) => {

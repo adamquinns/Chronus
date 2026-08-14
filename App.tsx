@@ -6,6 +6,7 @@ import { createCubanCampaign } from './engine/scenarios';
 import { loadMostRecentCampaign, saveCampaign } from './engine/persistence';
 import { OpenRouterGateway } from './engine/model';
 import { Clock3, PlayCircle, RotateCcw, ShieldCheck } from 'lucide-react';
+import { generateCustomScenario } from './engine/authoring';
 
 type Screen = 'GATEWAY' | 'MENU' | 'PLAYING';
 
@@ -16,6 +17,9 @@ const App: React.FC = () => {
   const [campaign, setCampaign] = useState<Campaign>();
   const [resume, setResume] = useState<Campaign>();
   const [loading, setLoading] = useState(true);
+  const [customPrompt, setCustomPrompt] = useState('');
+  const [generatingScenario, setGeneratingScenario] = useState(false);
+  const [customError, setCustomError] = useState<string>();
 
   useEffect(() => {
     loadMostRecentCampaign().then(setResume).catch(console.error).finally(() => setLoading(false));
@@ -33,6 +37,22 @@ const App: React.FC = () => {
     await saveCampaign(next);
     setCampaign(next);
     setScreen('PLAYING');
+  };
+
+  const beginCustom = async () => {
+    if (!gateway || !customPrompt.trim() || generatingScenario) return;
+    setGeneratingScenario(true);
+    setCustomError(undefined);
+    try {
+      const next = await generateCustomScenario(customPrompt, gateway);
+      await saveCampaign(next);
+      setCampaign(next);
+      setScreen('PLAYING');
+    } catch (error) {
+      setCustomError(error instanceof Error ? error.message : 'Custom scenario generation failed.');
+    } finally {
+      setGeneratingScenario(false);
+    }
   };
 
   if (screen === 'GATEWAY') return <ApiKeyGateway onUnlock={(key) => { setApiKey(key); setDemoMode(false); setScreen('MENU'); }} onDemo={() => { setDemoMode(true); setScreen('MENU'); }}/>;
@@ -61,6 +81,17 @@ const App: React.FC = () => {
             <button onClick={() => { setCampaign(resume); setScreen('PLAYING'); }} className="mt-6 w-full py-3 bg-blue-700 hover:bg-blue-600 rounded font-bold flex items-center justify-center gap-2"><RotateCcw size={18}/> Resume campaign</button>
           </> : <p className="text-gray-500">No saved campaign found on this device.</p>}
         </div>
+      </div>
+      <div className="mt-5 bg-gray-900 border border-purple-900/50 rounded-xl p-6">
+        <div className="text-xs font-mono text-purple-400 uppercase tracking-widest mb-2">Validated custom scenario</div>
+        <h2 className="text-2xl font-bold">Create another divergence</h2>
+        <p className="text-gray-400 mt-2">Describe a historical or fictional starting point, the role you want to occupy, and the central problem. AI proposes the package; Chronus validates it before play.</p>
+        <textarea value={customPrompt} onChange={(event) => setCustomPrompt(event.target.value)} rows={3} placeholder="What if Napoleon won at Waterloo? Put me in the role of…" className="mt-4 w-full bg-black border border-gray-700 rounded p-3 text-sm focus:border-purple-500 focus:outline-none"/>
+        {customError && <p className="mt-2 text-sm text-red-400">{customError}</p>}
+        <button onClick={beginCustom} disabled={!gateway || !customPrompt.trim() || generatingScenario} className="mt-3 w-full py-3 bg-purple-700 hover:bg-purple-600 disabled:opacity-40 rounded font-bold">
+          {generatingScenario ? 'Researching and validating scenario…' : 'Generate validated scenario'}
+        </button>
+        {!gateway && <p className="mt-2 text-xs text-amber-500">Custom scenario generation requires OpenRouter access.</p>}
       </div>
       <div className="mt-6 flex items-start gap-3 bg-black/30 border border-gray-800 rounded p-4 text-sm text-gray-500"><ShieldCheck className="text-emerald-500 shrink-0" size={18}/> Models interpret and challenge. Only the deterministic state engine can commit reality. Every mechanical change retains an attributable cause.</div>
       <button onClick={() => setScreen('GATEWAY')} className="block mx-auto mt-5 text-xs text-gray-600 hover:text-gray-400">Change API access mode</button>

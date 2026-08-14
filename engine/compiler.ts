@@ -1,6 +1,7 @@
 import {
   BeliefState,
   CompilerFidelity,
+  ControlMode,
   FeasibilityFinding,
   StrategyGraph,
   StrategyMechanism,
@@ -39,8 +40,24 @@ const inferKind = (text: string): StrategyMechanism['kind'] => {
 };
 
 const referencedIds = (text: string, state: WorldState) => Object.values(state.entities)
-  .filter((entity) => text.toLowerCase().includes(entity.name.toLowerCase().split(' ').at(-1)!) || text.toLowerCase().includes(entity.id.replaceAll('_', ' ')))
+  .filter((entity) => {
+    const lower = text.toLowerCase();
+    if (entity.id === state.manifest.playerId && /\brobert kennedy\b/i.test(text) && !/\bjohn(?: f\.)? kennedy\b|\bpresident kennedy\b/i.test(text)) return false;
+    return lower.includes(entity.name.toLowerCase().split(' ').at(-1)!) || lower.includes(entity.id.replaceAll('_', ' '));
+  })
   .map((entity) => entity.id);
+
+const resourceClaims = (text: string, state: WorldState) => {
+  const amount = Number(text.match(/\b(\d+(?:\.\d+)?)\b/)?.[1]);
+  if (!Number.isFinite(amount) || amount <= 0) return [];
+  const lower = text.toLowerCase();
+  const resource = Object.values(state.resources).find((candidate) =>
+    lower.includes(candidate.id.replaceAll('_', ' '))
+    || lower.includes(candidate.label.toLowerCase())
+    || lower.includes(candidate.unit.toLowerCase()),
+  );
+  return resource ? [{ resourceId: resource.id, amount }] : [];
+};
 
 export const compileDeterministically = (directive: string, state: WorldState): StrategyGraph => {
   const parts = clauses(directive);
@@ -54,7 +71,7 @@ export const compileDeterministically = (directive: string, state: WorldState): 
     assumptions: [],
     sequence: index,
     durationTurns: /prepare|build|recruit|develop|long.term/i.test(part) ? 2 : 1,
-    resourceClaims: [],
+    resourceClaims: inferKind(part) === 'RESOURCE_TRANSFER' ? resourceClaims(part, state) : [],
     specifiedDetail: part,
   }));
   return {
@@ -123,19 +140,51 @@ export const auditCompilerFidelity = async (
   }
 };
 
-export const classifyTurnDepth = (graph: StrategyGraph, state: WorldState): TurnDepth => {
+export const classifyTurn = (graph: StrategyGraph, state: WorldState): { depth: TurnDepth; reasons: string[] } => {
   const kinds = new Set(graph.mechanisms.map((item) => item.kind));
-  const highStakes = state.metrics.nuclear_tension >= 80 || state.goal.deadlineTurn - state.turn <= 2;
+  const dangerousMetric = state.manifest.metricDefinitions.some((definition) => {
+    const value = state.metrics[definition.id];
+    return (definition.dangerAbove !== undefined && value >= definition.dangerAbove)
+      || (definition.dangerBelow !== undefined && value <= definition.dangerBelow);
+  });
+  const pivotalLanguage = graph.mechanisms.some((item) =>
+    /nuclear|constitutional crisis|coup|regime change|overthrow|general war|assassinat|launch|annihilat/i.test(item.specifiedDetail));
+  const concealedForce = kinds.has('MILITARY_OPERATION') && kinds.has('DECEPTION');
+  const highStakes = dangerousMetric || state.goal.deadlineTurn - state.turn <= 2 || pivotalLanguage;
   const novel = graph.mechanisms.some((item) => item.kind === 'OTHER' || item.assumptions.length > 2);
-  if (highStakes || novel || graph.mechanisms.length >= 6) return 'DEEP';
-  if (graph.mechanisms.length >= 4 || kinds.size >= 4) return 'COMPLEX';
-  if (graph.mechanisms.length >= 2 || kinds.has('MILITARY_OPERATION') || kinds.has('DIPLOMACY')) return 'STANDARD';
-  return 'ROUTINE';
+  if (highStakes || novel || graph.mechanisms.length >= 6) return {
+    depth: 'DEEP',
+    reasons: [
+      ...(dangerousMetric ? ['A scenario danger threshold is active.'] : []),
+      ...(state.goal.deadlineTurn - state.turn <= 2 ? ['The active objective is near its deadline.'] : []),
+      ...(pivotalLanguage ? ['The directive contains pivotal or existential consequences.'] : []),
+      ...(novel ? ['At least one mechanism requires open-world causal judgment.'] : []),
+      ...(graph.mechanisms.length >= 6 ? ['The strategic package contains at least six mechanisms.'] : []),
+    ],
+  };
+  if (concealedForce || graph.mechanisms.length >= 4 || kinds.size >= 4 || (kinds.has('ECONOMIC_PRESSURE') && graph.mechanisms.some((item) => /bond|insurance|market|financial/i.test(item.specifiedDetail)))) return {
+    depth: 'COMPLEX',
+    reasons: [concealedForce ? 'A concealed military operation requires multi-actor analysis.' : 'The package has multiple interacting or context-sensitive mechanisms.'],
+  };
+  if (graph.mechanisms.length >= 2 || kinds.has('MILITARY_OPERATION') || kinds.has('DIPLOMACY')) return {
+    depth: 'STANDARD',
+    reasons: ['The action has meaningful strategic or actor-dependent effects.'],
+  };
+  return { depth: 'ROUTINE', reasons: ['The action is narrow, familiar, and low-complexity.'] };
 };
+
+export const classifyTurnDepth = (graph: StrategyGraph, state: WorldState): TurnDepth => classifyTurn(graph, state).depth;
 
 export const checkFeasibility = (graph: StrategyGraph, state: WorldState): FeasibilityFinding[] => {
   const playerId = state.manifest.playerId;
   const controlled = new Set(Object.values(state.entities).filter((entity) => entity.id === playerId || entity.controllerId === playerId).map((entity) => entity.id));
+  const capabilityPatterns: Partial<Record<StrategyMechanism['kind'], RegExp>> = {
+    MILITARY_OPERATION: /military|strike|invasion|naval|force|troop|air|strategic|weapon/i,
+    INTELLIGENCE: /intelligence|recon|surveil|collection|investigat|audit|spy/i,
+    DIPLOMACY: /diplom|channel|backchannel|correspondence|negotiat/i,
+    LEGAL_ACTION: /legal|law|court|injunction|treaty/i,
+    PUBLIC_COMMUNICATION: /public|press|speech|broadcast|media/i,
+  };
   return graph.mechanisms.map((mechanism) => {
     const reasons: string[] = [];
     const constraints: string[] = [];
@@ -143,18 +192,43 @@ export const checkFeasibility = (graph: StrategyGraph, state: WorldState): Feasi
     let classification: FeasibilityFinding['classification'] = 'POSSIBLE';
     let availableFraction = 1;
     let unmechanizedControlRequest = false;
+    const matchingRules = state.manifest.authorityRules.filter((rule) =>
+      rule.actorId === playerId
+      && mechanism.targetIds.includes(rule.targetId)
+      && rule.mechanismKinds.includes(mechanism.kind));
+    const controlRank = { NONE: 0, INFLUENCE: 1, DELEGATED: 2, DIRECT: 3 } as const;
+    const controlMode: ControlMode = matchingRules.reduce<ControlMode>((best, rule) =>
+      controlRank[rule.mode] > controlRank[best] ? rule.mode : best, mechanism.targetIds.length ? 'NONE' : 'DIRECT');
+    const capableEntities = Object.values(state.entities).filter((entity) => controlled.has(entity.id));
+    const capabilityPattern = capabilityPatterns[mechanism.kind];
+    const capabilityEvidence = capabilityPattern
+      ? capableEntities.flatMap((entity) => entity.capabilities.filter((capability) => capabilityPattern.test(capability)))
+      : capableEntities.flatMap((entity) => entity.capabilities).slice(0, 3);
+    if (capabilityPattern && capabilityEvidence.length === 0) {
+      feasible = false;
+      constraints.push(`No controlled entity has a declared capability supporting ${mechanism.kind}.`);
+      availableFraction = 0;
+    }
     for (const claim of mechanism.resourceClaims) {
       const resource = state.resources[claim.resourceId];
       if (!resource || resource.amount < claim.amount) {
         feasible = false;
         constraints.push(`Insufficient ${claim.resourceId}.`);
         availableFraction = resource ? Math.min(availableFraction, resource.amount / Math.max(1, claim.amount)) : 0;
+      } else if (!controlled.has(resource.ownerId) && !matchingRules.some((rule) => rule.targetId === resource.ownerId && (rule.mode === 'DIRECT' || rule.mode === 'DELEGATED'))) {
+        feasible = false;
+        constraints.push(`The player cannot allocate ${claim.resourceId}, which is controlled by ${resource.ownerId}.`);
+        availableFraction = 0;
       }
     }
-    if (mechanism.kind === 'DIRECT_ORDER' && mechanism.targetIds.some((id) => !controlled.has(id))) {
+    if (mechanism.kind === 'DIRECT_ORDER' && mechanism.targetIds.some((id) =>
+      !controlled.has(id) && !matchingRules.some((rule) => rule.targetId === id && (rule.mode === 'DIRECT' || rule.mode === 'DELEGATED')))) {
       feasible = false;
       unmechanizedControlRequest = true;
       constraints.push('The player lacks direct authority over at least one target. Interpret as a request or influence attempt.');
+    }
+    if (matchingRules.some((rule) => rule.conditions.length)) {
+      reasons.push(...matchingRules.flatMap((rule) => rule.conditions.map((condition) => `Authority condition: ${condition}.`)));
     }
     if (mechanism.kind === 'DIPLOMACY' && mechanism.targetIds.length) {
       const reachable = mechanism.targetIds.some((targetId) => Object.values(state.relationships).some((relationship) =>
@@ -162,21 +236,28 @@ export const checkFeasibility = (graph: StrategyGraph, state: WorldState): Feasi
       ));
       if (!reachable) {
         feasible = false;
+        availableFraction = 0;
         constraints.push('No available communication channel to the specified target.');
       }
     }
-    if (mechanism.durationTurns > 1) {
+    if (mechanism.sequence >= 6) {
+      classification = 'DELAYED';
+      availableFraction = Math.min(availableFraction, 0.5);
+      reasons.push('This part of the package exceeds immediate organizational capacity and can only begin this turn.');
+    } else if (mechanism.durationTurns > 1) {
       classification = 'DELAYED';
       reasons.push(`Requires approximately ${mechanism.durationTurns} turns to mature.`);
-    } else if (mechanism.kind === 'RESOURCE_TRANSFER' && feasible) {
+    } else if (mechanism.kind === 'RESOURCE_TRANSFER' && feasible && mechanism.resourceClaims.length > 0) {
       classification = 'CERTAIN';
       reasons.push('Within direct control if the stated resource exists and is available.');
+    } else if (mechanism.kind === 'RESOURCE_TRANSFER' && mechanism.resourceClaims.length === 0) {
+      reasons.push('The resource and amount are insufficiently specified for deterministic execution.');
     }
     if (!feasible) classification = unmechanizedControlRequest || availableFraction <= 0 ? 'IMPOSSIBLE' : 'DELAYED';
     if (graph.mechanisms.length > 6) {
       availableFraction *= 6 / graph.mechanisms.length;
       reasons.push('Organizational attention is diluted across an oversized strategic package.');
     }
-    return { mechanismId: mechanism.id, feasible, classification, reasons, hardConstraints: constraints, availableFraction };
+    return { mechanismId: mechanism.id, feasible, classification, controlMode, capabilityEvidence, reasons, hardConstraints: constraints, availableFraction };
   });
 };

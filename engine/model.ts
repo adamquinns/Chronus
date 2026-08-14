@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ModelCallResult } from './domain';
+import { ModelCallResult, ModelCallTrace } from './domain';
 
 export type ModelRole =
   | 'strategy_compiler'
@@ -9,7 +9,9 @@ export type ModelRole =
   | 'adjudicator'
   | 'deep_second_opinion'
   | 'narrator'
-  | 'validator';
+  | 'validator'
+  | 'scenario_architect'
+  | 'scenario_researcher';
 
 export interface ModelRoute {
   model: string;
@@ -29,6 +31,8 @@ export const DEFAULT_MODEL_ROUTES: ModelRoutes = {
   deep_second_opinion: { model: 'anthropic/claude-fable-5', temperature: 0.1, maxTokens: 6000, timeoutMs: 75_000 },
   narrator: { model: 'openai/gpt-5.6-luna', temperature: 0.4, maxTokens: 1800, timeoutMs: 45_000 },
   validator: { model: 'openai/gpt-5.6-luna', temperature: 0, maxTokens: 1600, timeoutMs: 45_000 },
+  scenario_architect: { model: 'openai/gpt-5.6-terra', temperature: 0.15, maxTokens: 9000, timeoutMs: 120_000 },
+  scenario_researcher: { model: 'anthropic/claude-sonnet-5', temperature: 0.1, maxTokens: 5000, timeoutMs: 90_000 },
 };
 
 export interface BudgetPolicy {
@@ -77,6 +81,8 @@ export interface ModelMessage {
 export interface ModelGateway {
   readonly routes: ModelRoutes;
   readonly budget: ModelBudget;
+  traceCount(): number;
+  tracesSince(index: number): ModelCallTrace[];
   callJson<T>(role: ModelRole, messages: ModelMessage[], schema: z.ZodType<T>, name: string): Promise<ModelCallResult<T>>;
 }
 
@@ -90,6 +96,7 @@ const extractJson = (text: string) => {
 export class OpenRouterGateway implements ModelGateway {
   readonly budget: ModelBudget;
   private readonly responseCache = new Map<string, Promise<ModelCallResult<unknown>>>();
+  private readonly traces: ModelCallTrace[] = [];
 
   constructor(
     private readonly apiKey: string,
@@ -101,18 +108,36 @@ export class OpenRouterGateway implements ModelGateway {
   }
 
   async callJson<T>(role: ModelRole, messages: ModelMessage[], schema: z.ZodType<T>, name: string): Promise<ModelCallResult<T>> {
+    const startedAt = new Date().toISOString();
+    const traceId = `model_${this.traces.length + 1}_${role}_${name}`;
     const cacheKey = JSON.stringify({ role, name, route: this.routes[role], messages });
     const cached = this.responseCache.get(cacheKey);
-    if (cached) return cached as Promise<ModelCallResult<T>>;
+    if (cached) {
+      try {
+        const result = await cached as ModelCallResult<T>;
+        this.traces.push({ id: traceId, role, model: this.routes[role].model, schemaName: name, startedAt, completedAt: new Date().toISOString(), status: 'CACHED', messages: structuredClone(messages), rawText: result.rawText, usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } });
+        return result;
+      } catch (error) {
+        this.traces.push({ id: traceId, role, model: this.routes[role].model, schemaName: name, startedAt, completedAt: new Date().toISOString(), status: 'FAILED', messages: structuredClone(messages), error: error instanceof Error ? error.message : 'Unknown cached model error' });
+        throw error;
+      }
+    }
     const pending = this.performCall(role, messages, schema, name);
     this.responseCache.set(cacheKey, pending as Promise<ModelCallResult<unknown>>);
     try {
-      return await pending;
+      const result = await pending;
+      this.traces.push({ id: traceId, role, model: this.routes[role].model, schemaName: name, startedAt, completedAt: new Date().toISOString(), status: 'SUCCEEDED', messages: structuredClone(messages), rawText: result.rawText, usage: result.usage });
+      return result;
     } catch (error) {
       this.responseCache.delete(cacheKey);
+      this.traces.push({ id: traceId, role, model: this.routes[role].model, schemaName: name, startedAt, completedAt: new Date().toISOString(), status: 'FAILED', messages: structuredClone(messages), error: error instanceof Error ? error.message : 'Unknown model error' });
       throw error;
     }
   }
+
+  traceCount() { return this.traces.length; }
+
+  tracesSince(index: number) { return structuredClone(this.traces.slice(index)); }
 
   private async performCall<T>(role: ModelRole, messages: ModelMessage[], schema: z.ZodType<T>, name: string): Promise<ModelCallResult<T>> {
     const route = this.routes[role];
@@ -178,6 +203,8 @@ export class OpenRouterGateway implements ModelGateway {
 export class StubGateway implements ModelGateway {
   readonly budget = new ModelBudget({ maxUsd: 0, maxRequests: 0, maxInputTokens: 0, maxOutputTokens: 0 });
   constructor(readonly routes: ModelRoutes = DEFAULT_MODEL_ROUTES) {}
+  traceCount() { return 0; }
+  tracesSince() { return []; }
   async callJson<T>(): Promise<ModelCallResult<T>> {
     throw new Error('No model gateway configured.');
   }

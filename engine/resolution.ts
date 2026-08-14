@@ -2,6 +2,8 @@ import {
   ActorAction,
   Adjudication,
   BeliefState,
+  Campaign,
+  ActorSimulationAudit,
   CausalPrecedent,
   EffectRecommendation,
   FeasibilityFinding,
@@ -16,6 +18,7 @@ import { ModelGateway } from './model';
 import { actorActionsSchema, adjudicationSchema, narrativeSchema, redTeamSchema } from './schemas';
 import { actorVisibleState, authoritativeSnapshot, perceivedStrategyForActor, playerVisibleState } from './projections';
 import { historicalPriorWeight } from './precedent';
+import { canAccess } from './visibility';
 
 const relevantActorIds = (graph: StrategyGraph, state: WorldState, depth: TurnDepth) => {
   const ids = new Set<string>();
@@ -54,12 +57,27 @@ export const simulateActors = async (
   beliefs: BeliefState,
   depth: TurnDepth,
   gateway?: ModelGateway,
-): Promise<ActorAction[]> => {
+  memories?: Campaign['memories'],
+): Promise<{ actions: ActorAction[]; packets: ActorSimulationAudit[] }> => {
   const actorIds = relevantActorIds(graph, state, depth);
-  if (!gateway) return actorIds.map((id) => fallbackActorAction(id, state, graph));
+  if (!gateway) {
+    const packets = actorIds.map((actorId) => {
+      const perceived = perceivedStrategyForActor(actorId, graph);
+      const input = actorVisibleState(actorId, state, beliefs.actors[actorId] ?? { actorId, beliefs: {}, knownFactIds: [] }, perceived, memories?.[actorId]);
+      return { actorId, input, output: [fallbackActorAction(actorId, state, graph)] };
+    });
+    return { actions: packets.flatMap((packet) => packet.output), packets };
+  }
+  const packets: ActorSimulationAudit[] = [];
   const results = await Promise.all(actorIds.map(async (actorId) => {
     const perceived = perceivedStrategyForActor(actorId, graph);
-    const packet = actorVisibleState(actorId, state, beliefs.actors[actorId] ?? { actorId, beliefs: {}, knownFactIds: [] }, perceived);
+    const packet = actorVisibleState(
+      actorId,
+      state,
+      beliefs.actors[actorId] ?? { actorId, beliefs: {}, knownFactIds: [] },
+      perceived,
+      memories?.[actorId],
+    );
     const role = depth === 'DEEP' ? 'actor_deep' : 'actor_standard';
     let result;
     try {
@@ -71,12 +89,14 @@ export const simulateActors = async (
         { role: 'user', content: JSON.stringify(packet) },
       ], actorActionsSchema, 'ActorActions');
     } catch {
-      return [fallbackActorAction(actorId, state, graph)];
+      const output = [fallbackActorAction(actorId, state, graph)];
+      packets.push({ actorId, input: packet, output });
+      return output;
     }
     const allowedCapabilities = new Set(state.entities[actorId].capabilities);
     const allowedPerceivedMechanisms = new Set(perceived.mechanisms.map((mechanism) => mechanism.id));
     const allowedBeliefs = new Set(Object.keys((beliefs.actors[actorId] ?? { beliefs: {} }).beliefs));
-    return result.value.actions
+    const output = result.value.actions
       .filter((action) => action.actorId === actorId)
       .map((action) => ({
         ...action,
@@ -86,8 +106,10 @@ export const simulateActors = async (
       }))
       .filter((action) => action.capabilityIdsUsed.length > 0 || action.mechanisms.length === 0)
       .slice(0, 1);
+    packets.push({ actorId, input: packet, output });
+    return output;
   }));
-  return results.flat();
+  return { actions: results.flat(), packets: packets.sort((a, b) => actorIds.indexOf(a.actorId) - actorIds.indexOf(b.actorId)) };
 };
 
 export const runRedTeam = async (
@@ -154,8 +176,40 @@ export const fallbackAdjudication = (
       effects.push(effect(`e_${mechanism.id}_support`, mechanism.id, 'domestic_support', 'POSITIVE', 'MINOR', 'A forceful response temporarily reassures domestic hawks.'));
     } else if (mechanism.kind === 'INTELLIGENCE') {
       effects.push(effect(`e_${mechanism.id}_intel`, mechanism.id, 'intelligence_quality', 'POSITIVE', 'MODERATE', 'Focused collection improves decision-relevant information.'));
+      const discoverable = Object.values(state.facts).find((fact) =>
+        fact.visibility.discoverable
+        && !canAccess(fact.visibility, state.manifest.playerId, state.manifest.playerId, state.gameOver));
+      if (discoverable) effects.push({
+        id: `e_${mechanism.id}_discover_${discoverable.id}`,
+        mechanismId: mechanism.id,
+        targetType: 'FACT',
+        targetId: discoverable.id,
+        field: 'discover',
+        direction: 'NEUTRAL',
+        impactClass: 'NONE',
+        confidence: 'MEDIUM',
+        engagement: 'ENGAGES',
+        cause: 'Focused collection may expose an existing hidden fact.',
+        dependencies: [],
+        actorId: state.manifest.playerId,
+      });
     } else if (mechanism.kind === 'PUBLIC_COMMUNICATION') {
       effects.push(effect(`e_${mechanism.id}_support`, mechanism.id, 'domestic_support', 'POSITIVE', 'MINOR', 'Clear public framing improves political support.'));
+    } else if (mechanism.kind === 'RESOURCE_TRANSFER' && mechanism.resourceClaims.length) {
+      for (const claim of mechanism.resourceClaims) effects.push({
+        id: `e_${mechanism.id}_${claim.resourceId}`,
+        mechanismId: mechanism.id,
+        targetType: 'RESOURCE',
+        targetId: claim.resourceId,
+        field: 'amount',
+        direction: 'NEGATIVE',
+        impactClass: 'NONE',
+        confidence: 'VERY_HIGH',
+        engagement: 'ENGAGES_STRONGLY',
+        cause: `The player directly allocated ${claim.amount} ${state.resources[claim.resourceId]?.unit ?? 'units'} of ${state.resources[claim.resourceId]?.label ?? claim.resourceId}.`,
+        dependencies: [],
+        proposedDelta: -claim.amount,
+      });
     } else {
       effects.push(effect(`e_${mechanism.id}_space`, mechanism.id, 'diplomatic_space', 'POSITIVE', 'TRIVIAL', 'The initiative creates limited strategic movement.'));
     }
@@ -209,17 +263,23 @@ export const adjudicate = async (
     const result = await gateway.callJson('adjudicator', [
       {
         role: 'system',
-        content: 'Adjudicate causal mechanisms, not rhetoric. Hard state is authoritative. Recommend bounded impact classes, never arbitrary point values. Use only existing targets. A good plan may fail; a bad plan may occasionally succeed. Do not invent capabilities. Be concise: reasons under 80 words, at most 12 effects and 5 outcome bands. Probabilities must sum approximately to 1 and reference recommended effect IDs.',
+        content: 'Adjudicate causal mechanisms, not rhetoric. Hard state is authoritative. Recommend bounded impact classes, never arbitrary point values. Use only existing targets. Actor responses are additional causal forces and may use mechanismId actor:<actorId>; player effects must use a supplied strategy mechanism ID. A good plan may fail; a bad plan may occasionally succeed. Do not invent capabilities. Be concise: reasons under 80 words, at most 12 effects and 5 outcome bands. Probabilities must sum approximately to 1 and reference recommended effect IDs.',
       },
       { role: 'user', content: JSON.stringify(prompt) },
     ], adjudicationSchema, 'Adjudication');
     return { ...result.value, outcomeBands: normalizeDistribution(result.value.outcomeBands) };
-  } catch {
-    return fallbackAdjudication(graph, feasibility, actorActions, state);
+  } catch (error) {
+    throw new Error(`Primary adjudication failed: ${error instanceof Error ? error.message : 'unknown model error'}`);
   }
 };
 
-export const sanitizeAdjudication = (adjudication: Adjudication, state: WorldState, depth: TurnDepth): Adjudication => {
+export const sanitizeAdjudication = (
+  adjudication: Adjudication,
+  state: WorldState,
+  depth: TurnDepth,
+  feasibility: FeasibilityFinding[] = [],
+  actorActions: ActorAction[] = [],
+): Adjudication => {
   const validTargets: Record<EffectRecommendation['targetType'], Set<string>> = {
     METRIC: new Set(Object.keys(state.metrics)),
     RESOURCE: new Set(Object.keys(state.resources)),
@@ -230,9 +290,15 @@ export const sanitizeAdjudication = (adjudication: Adjudication, state: WorldSta
     PROCESS: new Set(Object.keys(state.pendingProcesses)),
     GOAL: new Set([state.goal.id]),
   };
+  const allowedMechanisms = new Set(feasibility
+    .filter((finding) => finding.classification !== 'IMPOSSIBLE')
+    .map((finding) => finding.mechanismId));
+  actorActions.forEach((action) => allowedMechanisms.add(`actor:${action.actorId}`));
   const recommendedEffects = adjudication.recommendedEffects.filter((candidate) => {
+    if (feasibility.length && !allowedMechanisms.has(candidate.mechanismId)) return false;
     if (!validTargets[candidate.targetType].has(candidate.targetId)) return false;
     if (depth !== 'DEEP' && (candidate.impactClass === 'SEVERE' || candidate.impactClass === 'SYSTEMIC')) return false;
+    if (candidate.proposedDelta !== undefined && candidate.targetType !== 'RESOURCE') return false;
     return true;
   });
   const effectIds = new Set(recommendedEffects.map((item) => item.id));
@@ -246,7 +312,8 @@ export const sanitizeAdjudication = (adjudication: Adjudication, state: WorldSta
 export const narrate = async (
   stateBefore: WorldState,
   stateAfter: WorldState,
-  beliefs: BeliefState,
+  beliefsBefore: BeliefState,
+  beliefsAfter: BeliefState,
   graph: StrategyGraph,
   selectedOutcome: Adjudication['outcomeBands'][number],
   changes: unknown[],
@@ -255,10 +322,10 @@ export const narrate = async (
   const fallback = (): TurnNarrative => {
     return {
       title: selectedOutcome.label,
-      immediateOutcome: selectedOutcome.description,
+      immediateOutcome: `The strategy produced a ${selectedOutcome.label.toLowerCase()}.`,
       worldReaction: 'Other actors adjust their plans as the consequences become visible.',
       strategicConsequences: changes.length ? `${changes.length} attributable state changes were committed.` : 'No authoritative mechanical change was committed.',
-      news: [{ source: 'Executive Situation Room', headline: selectedOutcome.description }],
+      news: [{ source: 'Executive Situation Room', headline: `The strategy produced a ${selectedOutcome.label.toLowerCase()}.` }],
       advisorReactions: [],
     };
   };
@@ -272,10 +339,10 @@ export const narrate = async (
       {
         role: 'user',
         content: JSON.stringify({
-          playerVisibleBefore: playerVisibleState(stateBefore, beliefs),
-          committedVisibleAfter: playerVisibleState(stateAfter, beliefs),
+          playerVisibleBefore: playerVisibleState(stateBefore, beliefsBefore),
+          committedVisibleAfter: playerVisibleState(stateAfter, beliefsAfter),
           dryStrategy: graph,
-          selectedOutcome,
+          selectedOutcome: { id: selectedOutcome.id, label: selectedOutcome.label },
           committedChanges: changes,
         }),
       },

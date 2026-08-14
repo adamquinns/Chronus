@@ -1,6 +1,7 @@
 import { DBSchema, IDBPDatabase, openDB } from 'idb';
 import { Campaign, TurnAudit } from './domain';
 import { validateWorld } from './state';
+import { assertValidScenario, migrateCampaign } from './scenario';
 
 interface ChronusDb extends DBSchema {
   campaigns: {
@@ -37,6 +38,7 @@ const database = () => {
 };
 
 export const saveCampaign = async (campaign: Campaign) => {
+  assertValidScenario(campaign);
   const issues = validateWorld(campaign.state).filter((issue) => issue.severity === 'ERROR');
   if (issues.length) throw new Error(`Refusing to persist invalid world state: ${issues[0].message}`);
   const db = await database();
@@ -52,13 +54,19 @@ export const saveCampaign = async (campaign: Campaign) => {
 
 export const loadCampaign = async (campaignId: string): Promise<Campaign | undefined> => {
   const record = await (await database()).get('campaigns', campaignId);
-  return record?.campaign;
+  if (!record) return undefined;
+  const campaign = migrateCampaign(record.campaign);
+  assertValidScenario(campaign);
+  return campaign;
 };
 
 export const loadMostRecentCampaign = async (): Promise<Campaign | undefined> => {
   const db = await database();
   const cursor = await db.transaction('campaigns').store.index('by-updated').openCursor(null, 'prev');
-  return cursor?.value.campaign;
+  if (!cursor) return undefined;
+  const campaign = migrateCampaign(cursor.value.campaign);
+  assertValidScenario(campaign);
+  return campaign;
 };
 
 export const listCampaigns = async () => {
@@ -89,19 +97,42 @@ export const deleteCampaign = async (campaignId: string) => {
 
 export const exportCampaign = (campaign: Campaign) => JSON.stringify({
   format: 'chronus-campaign',
-  version: 1,
+  version: 2,
   exportedAt: new Date().toISOString(),
   campaign,
 }, null, 2);
 
 export const importCampaign = (raw: string): Campaign => {
   const parsed = JSON.parse(raw) as { format?: string; version?: number; campaign?: Campaign };
-  if (parsed.format !== 'chronus-campaign' || parsed.version !== 1 || !parsed.campaign?.state) {
+  if (parsed.format !== 'chronus-campaign' || ![1, 2].includes(parsed.version ?? 0) || !parsed.campaign?.state) {
     throw new Error('Unsupported or malformed Chronus campaign file.');
   }
-  const issues = validateWorld(parsed.campaign.state).filter((issue) => issue.severity === 'ERROR');
+  const campaign = migrateCampaign(parsed.campaign);
+  assertValidScenario(campaign);
+  const issues = validateWorld(campaign.state).filter((issue) => issue.severity === 'ERROR');
   if (issues.length) throw new Error(`Campaign validation failed: ${issues[0].message}`);
-  return parsed.campaign;
+  return campaign;
+};
+
+export const rollbackCampaign = (campaign: Campaign, committedTurn: number): Campaign => {
+  if (committedTurn === 0) {
+    const first = campaign.audits[0];
+    if (!first || first.legacyIncomplete) throw new Error('No exact initial snapshot is available for rollback.');
+    return {
+      state: structuredClone(first.previousStateSnapshot),
+      beliefs: structuredClone(first.previousBeliefSnapshot),
+      memories: structuredClone(first.previousMemorySnapshot),
+      audits: [],
+    };
+  }
+  const audit = campaign.audits.find((candidate) => candidate.turn === committedTurn);
+  if (!audit || audit.legacyIncomplete) throw new Error(`No exact audit snapshot is available for turn ${committedTurn}.`);
+  return {
+    state: structuredClone(audit.committedStateSnapshot),
+    beliefs: structuredClone(audit.committedBeliefSnapshot),
+    memories: structuredClone(audit.committedMemorySnapshot),
+    audits: campaign.audits.filter((candidate) => candidate.turn <= committedTurn),
+  };
 };
 
 export const setSetting = async (key: string, value: unknown) => (await database()).put('settings', { key, value });
