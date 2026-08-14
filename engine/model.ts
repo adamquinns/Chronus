@@ -89,6 +89,7 @@ const extractJson = (text: string) => {
 
 export class OpenRouterGateway implements ModelGateway {
   readonly budget: ModelBudget;
+  private readonly responseCache = new Map<string, Promise<ModelCallResult<unknown>>>();
 
   constructor(
     private readonly apiKey: string,
@@ -100,6 +101,20 @@ export class OpenRouterGateway implements ModelGateway {
   }
 
   async callJson<T>(role: ModelRole, messages: ModelMessage[], schema: z.ZodType<T>, name: string): Promise<ModelCallResult<T>> {
+    const cacheKey = JSON.stringify({ role, name, route: this.routes[role], messages });
+    const cached = this.responseCache.get(cacheKey);
+    if (cached) return cached as Promise<ModelCallResult<T>>;
+    const pending = this.performCall(role, messages, schema, name);
+    this.responseCache.set(cacheKey, pending as Promise<ModelCallResult<unknown>>);
+    try {
+      return await pending;
+    } catch (error) {
+      this.responseCache.delete(cacheKey);
+      throw error;
+    }
+  }
+
+  private async performCall<T>(role: ModelRole, messages: ModelMessage[], schema: z.ZodType<T>, name: string): Promise<ModelCallResult<T>> {
     const route = this.routes[role];
     let repairMessages = [...messages];
     let lastError: unknown;

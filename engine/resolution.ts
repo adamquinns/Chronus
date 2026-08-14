@@ -2,6 +2,7 @@ import {
   ActorAction,
   Adjudication,
   BeliefState,
+  CausalPrecedent,
   EffectRecommendation,
   FeasibilityFinding,
   RedTeamFinding,
@@ -14,6 +15,7 @@ import { normalizeDistribution } from './calibration';
 import { ModelGateway } from './model';
 import { actorActionsSchema, adjudicationSchema, narrativeSchema, redTeamSchema } from './schemas';
 import { actorVisibleState, authoritativeSnapshot, perceivedStrategyForActor, playerVisibleState } from './projections';
+import { historicalPriorWeight } from './precedent';
 
 const relevantActorIds = (graph: StrategyGraph, state: WorldState, depth: TurnDepth) => {
   const ids = new Set<string>();
@@ -93,6 +95,7 @@ export const runRedTeam = async (
   feasibility: FeasibilityFinding[],
   actorActions: ActorAction[],
   state: WorldState,
+  precedents: CausalPrecedent[] = [],
   gateway?: ModelGateway,
 ): Promise<RedTeamFinding[]> => {
   if (!gateway) {
@@ -110,7 +113,7 @@ export const runRedTeam = async (
         role: 'system',
         content: 'Red-team a dry strategy against authoritative state. Look for compiler charity, omitted dependencies, omniscience, unavailable capability, unsupported surprise, second-order effects, and magnitude drift. Do not improve the plan or decide the outcome.',
       },
-      { role: 'user', content: JSON.stringify({ strategy: graph, feasibility, actorActions, authoritativeState: authoritativeSnapshot(state) }) },
+      { role: 'user', content: JSON.stringify({ strategy: graph, feasibility, actorActions, causalPrecedents: precedents, authoritativeState: authoritativeSnapshot(state) }) },
     ], redTeamSchema, 'RedTeamFindings');
     return result.value.findings;
   } catch {
@@ -186,6 +189,7 @@ export const adjudicate = async (
   redTeam: RedTeamFinding[],
   state: WorldState,
   depth: TurnDepth,
+  precedents: CausalPrecedent[] = [],
   gateway?: ModelGateway,
 ): Promise<Adjudication> => {
   if (!gateway) return fallbackAdjudication(graph, feasibility, actorActions, state);
@@ -194,6 +198,8 @@ export const adjudicate = async (
     feasibility,
     actorActions,
     redTeam,
+    causalPrecedents: precedents,
+    historicalPriorWeight: historicalPriorWeight(state),
     authoritativeState: authoritativeSnapshot(state),
     allowedImpactClasses: depth === 'DEEP'
       ? ['NONE', 'TRIVIAL', 'MINOR', 'MODERATE', 'MAJOR', 'SEVERE', 'SYSTEMIC']

@@ -202,17 +202,47 @@ export const updateBeliefsFromChanges = (
 ): BeliefState => {
   const next = structuredClone(beliefs);
   for (const change of changes) {
-    if (change.targetType !== 'METRIC' || typeof change.after !== 'number') continue;
-    const key = `${change.targetId}.${change.field}`;
-    next.player.beliefs[key] = {
-      subjectId: change.targetId,
-      field: change.field,
-      range: [Math.max(0, change.after - 5), Math.min(100, change.after + 5)],
-      estimate: change.after,
-      confidence: 'HIGH',
-      sourceFactIds: [],
-      updatedTurn: state.turn,
-    };
+    if (change.targetType === 'METRIC' && typeof change.after === 'number') {
+      const key = `${change.targetId}.${change.field}`;
+      const definition = state.manifest.metricDefinitions.find((item) => item.id === change.targetId);
+      const learned = {
+        subjectId: change.targetId,
+        field: change.field,
+        range: [Math.max(0, change.after - 5), Math.min(100, change.after + 5)] as [number, number],
+        estimate: change.after,
+        confidence: 'HIGH' as const,
+        sourceFactIds: [],
+        updatedTurn: state.turn,
+      };
+      next.player.beliefs[key] = learned;
+      if (!definition?.hidden) {
+        for (const actor of Object.values(next.actors)) actor.beliefs[key] = { ...learned, confidence: 'MEDIUM' };
+      }
+    }
+    if (change.targetType === 'ENTITY' && next.actors[change.targetId]) {
+      next.actors[change.targetId].beliefs[`self.${change.field}`] = {
+        subjectId: change.targetId,
+        field: change.field,
+        categorical: String(change.after),
+        confidence: 'VERY_HIGH',
+        sourceFactIds: [],
+        updatedTurn: state.turn,
+      };
+    }
+    if (change.targetType === 'ARC' && typeof change.after === 'number') {
+      const key = `${change.targetId}.progress`;
+      const learned = {
+        subjectId: change.targetId,
+        field: 'progress',
+        estimate: change.after,
+        range: [Math.max(0, change.after - 8), Math.min(100, change.after + 8)] as [number, number],
+        confidence: 'MEDIUM' as const,
+        sourceFactIds: [],
+        updatedTurn: state.turn,
+      };
+      next.player.beliefs[key] = learned;
+      for (const actor of Object.values(next.actors)) actor.beliefs[key] = { ...learned, confidence: 'LOW' };
+    }
   }
   return next;
 };

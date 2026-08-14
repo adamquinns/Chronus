@@ -17,6 +17,7 @@ import { adjudicate, narrate, runRedTeam, sanitizeAdjudication, simulateActors }
 import { commitEffects, evolvePendingProcesses, updateBeliefsFromChanges, validateWorld } from './state';
 import { drawSeeded, selectWeighted } from './rng';
 import { saveCampaign } from './persistence';
+import { autonomousWorldEffects, historicalPriorWeight, retrievePrecedents } from './precedent';
 
 export interface RunTurnOptions {
   gateway?: ModelGateway;
@@ -60,6 +61,7 @@ const getSecondOpinion = async (
   feasibility: TurnAudit['feasibility'],
   actorActions: TurnAudit['actorActions'],
   redTeam: TurnAudit['redTeam'],
+  precedents: TurnAudit['precedents'],
   gateway: ModelGateway,
 ) => {
   const result = await gateway.callJson('deep_second_opinion', [
@@ -69,7 +71,7 @@ const getSecondOpinion = async (
     },
     {
       role: 'user',
-      content: JSON.stringify({ dryStrategy: graph, feasibility, actorActions, redTeam, authoritativeState: authoritativeSnapshot(campaign.state) }),
+      content: JSON.stringify({ dryStrategy: graph, feasibility, actorActions, redTeam, causalPrecedents: precedents, historicalPriorWeight: historicalPriorWeight(campaign.state), authoritativeState: authoritativeSnapshot(campaign.state) }),
     },
   ], adjudicationSchema, 'IndependentAdjudication');
   return result.value;
@@ -90,20 +92,27 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
 
   progress(options, 'FEASIBILITY', 'Checking hard constraints', 'Authority, resources, timing, logistics, and communication.');
   const feasibility = checkFeasibility(dryStrategy, campaign.state);
+  const precedents = retrievePrecedents(campaign, dryStrategy);
 
   progress(options, 'ACTORS', 'Simulating relevant actors', 'Each actor receives only its permitted beliefs and observations.');
   const actorActions = await simulateActors(dryStrategy, campaign.state, campaign.beliefs, depth, options.gateway);
 
   progress(options, 'RED_TEAM', 'Challenging the strategy', 'Auditing hidden dependencies, capabilities, and second-order effects.');
-  const redTeam = await runRedTeam(dryStrategy, feasibility, actorActions, campaign.state, options.gateway);
+  const redTeam = await runRedTeam(dryStrategy, feasibility, actorActions, campaign.state, precedents, options.gateway);
 
   progress(options, 'ADJUDICATE', 'Adjudicating causal effects', 'Converting constrained judgments into bounded effect recommendations.');
-  const primaryPromise = adjudicate(dryStrategy, feasibility, actorActions, redTeam, campaign.state, depth, options.gateway);
-  const secondPromise = depth === 'DEEP' && options.gateway
-    ? getSecondOpinion(campaign, dryStrategy, feasibility, actorActions, redTeam, options.gateway)
+  const primaryPromise = adjudicate(dryStrategy, feasibility, actorActions, redTeam, campaign.state, depth, precedents, options.gateway);
+  const needsSecondOpinion = depth === 'DEEP' && Boolean(options.gateway) && (
+    dryStrategy.mechanisms.some((mechanism) => mechanism.kind === 'OTHER')
+    || dryStrategy.mechanisms.length >= 5
+    || redTeam.some((finding) => finding.severity === 'BLOCKING')
+    || campaign.state.metrics.nuclear_tension >= 95
+  );
+  const secondPromise = needsSecondOpinion && options.gateway
+    ? getSecondOpinion(campaign, dryStrategy, feasibility, actorActions, redTeam, precedents, options.gateway)
     : undefined;
   let adjudication = sanitizeAdjudication(await primaryPromise, campaign.state, depth);
-  if (depth === 'DEEP' && options.gateway) {
+  if (needsSecondOpinion && options.gateway) {
     try {
       const second = sanitizeAdjudication(await secondPromise!, campaign.state, depth);
       const reconciled = reconcile(adjudication, second);
@@ -124,9 +133,10 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
   const selectedEffectIds = new Set(selectedOutcome.effectIds);
   const selectedEffects: EffectRecommendation[] = adjudication.recommendedEffects.filter((effect) => selectedEffectIds.has(effect.id));
   const maturedEffects = evolvePendingProcesses(campaign.state);
+  const worldEffects = autonomousWorldEffects(campaign.state);
 
   progress(options, 'COMMIT', 'Committing authoritative state', 'Applying validated effects with causal provenance.');
-  const committed = commitEffects(campaign.state, [...selectedEffects, ...maturedEffects]);
+  const committed = commitEffects(campaign.state, [...selectedEffects, ...maturedEffects, ...worldEffects]);
   committed.state.rngCursor = draw.cursor;
   committed.state.dateLabel = `${campaign.state.manifest.startingDate} + ${committed.state.turn * 4} hours`;
 
@@ -154,6 +164,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     feasibility,
     actorActions,
     redTeam,
+    precedents,
     adjudication,
     selectedOutcome,
     randomDraw: draw.value,

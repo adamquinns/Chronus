@@ -297,6 +297,17 @@ export interface StateChange {
   confidence: Confidence;
 }
 
+export interface CausalPrecedent {
+  turn: number;
+  mechanismKind: StrategyMechanism['kind'];
+  targetId: Id;
+  field: string;
+  impactClass: ImpactClass;
+  appliedDelta?: number;
+  cause: string;
+  contextualDifference: string;
+}
+
 export interface ValidationIssue {
   code: string;
   severity: 'WARNING' | 'ERROR';
@@ -318,6 +329,7 @@ export interface TurnAudit {
   feasibility: FeasibilityFinding[];
   actorActions: ActorAction[];
   redTeam: RedTeamFinding[];
+  precedents: CausalPrecedent[];
   adjudication: Adjudication;
   selectedOutcome: OutcomeBand;
   randomDraw: number;
