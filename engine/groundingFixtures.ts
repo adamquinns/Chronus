@@ -230,5 +230,95 @@ export const GROUNDING_FIXTURES: Record<string, GroundingFixture[]> = {
   ],
 };
 
+GROUNDING_FIXTURES.american_twilight = [
+  {
+    id: 'fixture_chief_justice',
+    aliases: ['chief justice', 'the chief justice', 'john roberts', 'chief justice roberts', 'the supreme court', 'supreme court', 'scotus'],
+    entity: person(
+      'john_roberts',
+      'John Roberts',
+      'Chief Justice of the United States; an institutionalist conservative protective of the Court’s authority and reputation, wary of both executive overreach and open confrontation.',
+      ['Preserve the Court’s institutional authority', 'Avoid rulings the executive might openly defy'],
+      ['Supreme Court leadership and opinion assignment', 'Control over the shadow docket’s pace', 'Institutional legitimacy'],
+      ['No enforcement arm', 'Bound by cases actually presented'],
+      78,
+      64,
+    ),
+    facts: [officeFact(
+      'fact_chief_justice',
+      'John Roberts serves as Chief Justice of the United States (November 2025).',
+      ['Supreme Court of the United States, Current Members'],
+    )],
+  },
+  {
+    id: 'fixture_speaker',
+    aliases: ['speaker of the house', 'the speaker', 'house speaker', 'mike johnson', 'speaker johnson'],
+    entity: person(
+      'mike_johnson',
+      'Mike Johnson',
+      'Speaker of the House; administration-aligned, managing a narrow majority and dependent on the president’s coalition for his own position.',
+      ['Hold the majority together', 'Advance the administration’s legislative priorities'],
+      ['House floor control', 'Committee appointments', 'National platform'],
+      ['Narrow majority', 'Dependent on the president’s base'],
+      70,
+      55,
+    ),
+    facts: [officeFact(
+      'fact_speaker',
+      'Mike Johnson serves as Speaker of the U.S. House of Representatives (November 2025).',
+      ['U.S. House of Representatives, Office of the Speaker'],
+    )],
+  },
+  {
+    id: 'fixture_fed_chair',
+    aliases: ['federal reserve chair', 'fed chair', 'jerome powell', 'chair powell', 'the federal reserve', 'the fed'],
+    entity: person(
+      'jerome_powell',
+      'Jerome Powell',
+      'Chair of the Federal Reserve; defending central-bank independence under sustained public pressure from the administration, with a term expiring in 2026.',
+      ['Preserve Federal Reserve independence', 'Maintain market and price stability'],
+      ['Monetary policy authority', 'Market credibility', 'Institutional independence norms'],
+      ['Term expires May 2026', 'No role in electoral disputes'],
+      72,
+      70,
+    ),
+    facts: [officeFact(
+      'fact_fed_chair',
+      'Jerome Powell serves as Chair of the Federal Reserve (November 2025).',
+      ['Federal Reserve Board, About the Chair'],
+    )],
+  },
+  {
+    id: 'fixture_pa_governor',
+    aliases: ['governor of pennsylvania', 'pennsylvania governor', 'josh shapiro', 'governor shapiro'],
+    entity: person(
+      'josh_shapiro',
+      'Josh Shapiro',
+      'Governor of Pennsylvania; a Democratic governor of the most contested swing state, balancing visible resistance against exposure of his state’s election infrastructure.',
+      ['Protect Pennsylvania’s election administration', 'Position for national leadership without inviting federal retaliation'],
+      ['State executive power', 'Pennsylvania National Guard authority', 'National profile', 'State attorney general coordination'],
+      ['Divided legislature', 'Federal funding leverage over the state'],
+      68,
+      66,
+    ),
+    facts: [officeFact(
+      'fact_pa_governor',
+      'Josh Shapiro serves as Governor of Pennsylvania (November 2025).',
+      ['Commonwealth of Pennsylvania, Office of the Governor'],
+    )],
+    relationships: [{
+      id: 'coalition_shapiro',
+      fromId: 'coalition_director',
+      toId: 'josh_shapiro',
+      alignment: 72,
+      trust: 55,
+      leverage: 35,
+      communication: true,
+      commitments: [],
+      visibility: pub(),
+    }],
+  },
+];
+
 export const fixturesForScenario = (scenarioId: string): GroundingFixture[] =>
   GROUNDING_FIXTURES[scenarioId] ?? [];

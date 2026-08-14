@@ -688,9 +688,18 @@ export interface ChronicleEntry {
   summary: string;
 }
 
+export interface OutcomeLedger {
+  attempted: string[];
+  blocked: Array<{ attempt: string; reason: string }>;
+  observedResponses: string[];
+  unresolved: string[];
+  setAside: string[];
+}
+
 export interface NarrativePacket {
   scenarioContext: Partial<NarrativeWorldModel>;
   rawDirective: string;
+  outcomeLedger: OutcomeLedger;
   compiledStrategy: StrategyGraph;
   selectedOutcome: OutcomeBand;
   visibleChanges: unknown[];

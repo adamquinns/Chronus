@@ -1,4 +1,4 @@
-import { ActorAction, Campaign, EffectRecommendation, NarrativePacket, OutcomeBand, StrategyGraph, WorldState } from './domain';
+import { ActorAction, Campaign, EffectRecommendation, FeasibilityFinding, NarrativePacket, OutcomeBand, OutcomeLedger, StrategyGraph, WorldState } from './domain';
 import { canAccess } from './visibility';
 
 const relevantNarrativeContext = (campaign: Campaign, graph: StrategyGraph) => {
@@ -33,6 +33,7 @@ export const buildNarrativePacket = (
   visibleChanges: NarrativePacket['visibleChanges'],
   actorActions: ActorAction[],
   selectedEffects: EffectRecommendation[],
+  feasibility: FeasibilityFinding[] = [],
 ): NarrativePacket => {
   const visibleEffectIds = new Set(visibleChanges.flatMap((change) => {
     if (change && typeof change === 'object' && 'sourceEffectId' in change && typeof change.sourceEffectId === 'string') {
@@ -70,9 +71,40 @@ export const buildNarrativePacket = (
       : 'No new consequence is yet observable to the player.',
     effectIds: [...visibleEffectIds],
   };
+  // Fix-doc §13: the player-facing result must distinguish what the player
+  // actually attempted, what a rule blocked, what other actors observably did,
+  // and what has no attributable answer yet. Built deterministically so even a
+  // failed narrator model renders committed reality faithfully.
+  const feasibilityById = new Map(feasibility.map((finding) => [finding.mechanismId, finding]));
+  const selectedMechanismIds = new Set(selectedEffects.map((effect) => effect.mechanismId));
+  const outcomeLedger: OutcomeLedger = {
+    attempted: graph.mechanisms
+      .filter((mechanism) => feasibilityById.get(mechanism.id)?.classification !== 'IMPOSSIBLE')
+      .map((mechanism) => mechanism.specifiedDetail || mechanism.objective)
+      .slice(0, 6),
+    blocked: graph.mechanisms
+      .filter((mechanism) => feasibilityById.get(mechanism.id)?.classification === 'IMPOSSIBLE')
+      .map((mechanism) => ({
+        attempt: mechanism.specifiedDetail || mechanism.objective,
+        reason: feasibilityById.get(mechanism.id)?.hardConstraints.join(' ') || 'A hard constraint prevented this.',
+      }))
+      .slice(0, 4),
+    observedResponses: visibleActorEvents.map((event) => `${event.actorName}: ${event.action}`).slice(0, 6),
+    unresolved: [
+      ...graph.requestedOutcomes.map((outcome) => `Requested outcome with no committed resolution yet: ${outcome}`),
+      ...graph.mechanisms
+        .filter((mechanism) => feasibilityById.get(mechanism.id)?.classification === 'DELAYED')
+        .map((mechanism) => `In motion, not concluded: ${mechanism.specifiedDetail || mechanism.objective}`),
+      ...graph.mechanisms
+        .filter((mechanism) => feasibilityById.get(mechanism.id)?.classification !== 'IMPOSSIBLE' && !selectedMechanismIds.has(mechanism.id))
+        .map((mechanism) => `No attributable effect yet: ${mechanism.specifiedDetail || mechanism.objective}`),
+    ].slice(0, 6),
+    setAside: graph.assertedExternalEvents.map((event) => `Not player-controlled; set aside unresolved: ${event}`).slice(0, 4),
+  };
   return {
     scenarioContext: relevantNarrativeContext(campaign, graph),
     rawDirective,
+    outcomeLedger,
     compiledStrategy: graph,
     selectedOutcome: observableOutcome,
     visibleChanges,

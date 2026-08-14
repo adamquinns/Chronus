@@ -443,7 +443,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     committed.changes,
     dryStrategy,
   );
-  const narrativePacket = buildNarrativePacket(campaign, committed.state, rawDirective, dryStrategy, selectedOutcome, visibleCommittedChanges, actorActions, selectedEffects);
+  const narrativePacket = buildNarrativePacket(campaign, committed.state, rawDirective, dryStrategy, selectedOutcome, visibleCommittedChanges, actorActions, selectedEffects, feasibility);
   const narrative = await narrate(narrativePacket, options.gateway);
   progress(options, 'NARRATE', 'Situation report written', 'Narrative was generated from committed player-visible reality.', 'COMPLETED');
   const budgetAfter = options.gateway?.budget.snapshot() ?? budgetBefore;

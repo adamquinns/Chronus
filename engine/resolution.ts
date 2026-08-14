@@ -664,13 +664,26 @@ export const narrate = async (
       .split(/\s+/)
       .slice(-120)
       .join(' ');
+    // Fix-doc §13: even the deterministic fallback renders the outcome ledger —
+    // blocked attempts, set-aside assertions, and unresolved threads are stated
+    // plainly rather than left implied by prose.
+    const ledger = packet.outcomeLedger;
+    const ledgerSentences = [
+      ...ledger.blocked.map((entry) => `Blocked: ${entry.attempt} — ${entry.reason}`),
+      ...ledger.setAside.slice(0, 2),
+      ...ledger.unresolved.slice(0, 2),
+    ].join(' ');
     return {
       title,
       immediateOutcome: changes.length
         ? `${flavor.execution} ${firstConcrete}`.trim()
         : flavor.execution,
-      worldReaction: flavor.worldReaction,
-      strategicConsequences: flavor.consequence,
+      worldReaction: ledger.observedResponses.length
+        ? `${flavor.worldReaction} Observed responses: ${ledger.observedResponses.join(' ')}`
+        : flavor.worldReaction,
+      strategicConsequences: ledgerSentences
+        ? `${flavor.consequence} ${ledgerSentences}`.trim()
+        : flavor.consequence,
       news: [{ source: flavor.press[0].source, headline: title }],
       advisorReactions: packet.advisors.slice(0, 3).map((advisor) => ({
         actorId: advisor.id,
@@ -690,7 +703,7 @@ export const narrate = async (
     const result = await gateway.callJson('narrator', [
       {
         role: 'system',
-        content: 'You are Chronus’s post-commit storyteller. Write scenario-specific, concrete history from this visibility-safe NarrativePacket only. The causal outcome is fixed. Never invent a mechanical event, actor action, relationship change, discovery, capability, or hidden fact. The raw directive may shape phrasing but not reality. Distinguish observation from uncertainty. Give advisors differentiated voices grounded in their profiles. Reuse recurring characters naturally. Treat recentNarratives as an anti-repetition list: do not reuse their headlines, framing devices, advisor phrasing, or any distinctive clause; storySoFar is context, never copy. Each turn needs a specific event title, at least one named person/place/time/quantity, and at least two physical or procedural details grounded in the packet. Mention numeric metric deltas at most once across the entire response. Never use “under pressure” as a title or write “an observable world process changed independently.” Compact sections stay under 130 words; detailedReport may be up to 400 words. Artifacts may frame a committed event differently but cannot add facts. updatedStorySummary and memory suggestions must describe committed observable history only.',
+        content: 'You are Chronus’s post-commit storyteller. Write scenario-specific, concrete history from this visibility-safe NarrativePacket only. The causal outcome is fixed. Never invent a mechanical event, actor action, relationship change, discovery, capability, or hidden fact. The raw directive may shape phrasing but not reality. Structure the account around the packet’s outcomeLedger: what the player actually ordered or attempted, what a rule or authority BLOCKED and why, what other actors OBSERVABLY did, what remains UNRESOLVED with no attributable answer, and setAside assertions the player does not control — never present a requestedOutcome, setAside event, or unresolved item as having happened. Distinguish observation from uncertainty. Give advisors differentiated voices grounded in their profiles. Reuse recurring characters naturally. Treat recentNarratives as an anti-repetition list: do not reuse their headlines, framing devices, advisor phrasing, or any distinctive clause; storySoFar is context, never copy. Each turn needs a specific event title, at least one named person/place/time/quantity, and at least two physical or procedural details grounded in the packet. Mention numeric metric deltas at most once across the entire response. Never use “under pressure” as a title or write “an observable world process changed independently.” Compact sections stay under 130 words; detailedReport may be up to 400 words. Artifacts may frame a committed event differently but cannot add facts. updatedStorySummary and memory suggestions must describe committed observable history only.',
       },
       {
         role: 'user',

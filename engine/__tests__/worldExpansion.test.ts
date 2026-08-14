@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { Adjudication, DirectiveRevisionError, WorldExtensionProposal } from '../domain';
 import { checkFeasibility, compileDeterministically } from '../compiler';
 import { createCubanCampaign } from '../scenarios';
+import { createTwilightCampaign } from '../twilightScenario';
 import { runTurn } from '../pipeline';
 import { reconstructCommittedTurn } from '../audit';
+import { exportCampaign, importCampaign } from '../persistence';
+import { visibleFactIds, visibility } from '../visibility';
 import { validateWorldExtension } from '../worldExpansion';
 import { validateAdjudicationProposal } from '../validation';
-import { visibility } from '../visibility';
 
 const LIVE_DIRECTIVE_1 = 'I am publically and privately asking my VP LBJ to resign ASAP so I can appoint a new VP RFK.';
 const LIVE_DIRECTIVE_2 = 'Demand LBJ resign immediately in writing - bring him to the WH by force if needed. Either way, he is resigning in the 15 mins using the full force for the executive branch to ensure this happens immediately. And the proccess to install RFK immediately - RFK will be the VP within the hour.';
@@ -89,6 +91,39 @@ describe('LBJ dynamic world expansion regression (live transcript)', () => {
       campaign = result.campaign;
     }
     expect(Object.keys(campaign.state.entities).filter((id) => id.includes('johnson'))).toEqual(['lyndon_johnson']);
+  });
+});
+
+describe('dynamic actors are full, non-omniscient citizens', () => {
+  it('gives a materialized actor beliefs and memory but no inaccessible facts, and survives export/import', async () => {
+    const result = await runTurn(createCubanCampaign(51), LIVE_DIRECTIVE_1, { persist: false });
+    const state = result.campaign.state;
+    // LBJ must not know the Soviets' hidden deployment.
+    expect(visibleFactIds(state, 'lyndon_johnson')).not.toContain('tactical_nukes_cuba');
+    const packet = result.audit.actorSimulationPackets.find((item) => item.actorId === 'lyndon_johnson');
+    if (packet) expect(JSON.stringify(packet.input)).not.toMatch(/tactical nuclear weapons are deployed/i);
+    // Round trip preserves the dynamic entity and its aliases exactly.
+    const restored = importCampaign(exportCampaign(result.campaign));
+    expect(restored.state.entities.lyndon_johnson).toEqual(state.entities.lyndon_johnson);
+    expect(restored.aliases.lbj).toBe('lyndon_johnson');
+  });
+
+  it('reports set-aside assertions and blocked attempts in the outcome ledger', async () => {
+    const hybrid = await runTurn(createCubanCampaign(52), LIVE_DIRECTIVE_2, { persist: false });
+    expect(hybrid.audit.narrativePacket?.outcomeLedger.setAside.length).toBeGreaterThanOrEqual(2);
+    expect(hybrid.audit.narrative.strategicConsequences).toMatch(/set aside|not player-controlled|blocked/i);
+    const blocked = await runTurn(createCubanCampaign(53), 'Order the Governor of Florida to fly to Cuba and negotiate a settlement.', { persist: false });
+    expect(blocked.audit.narrativePacket?.outcomeLedger.blocked.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('american_twilight grounding fixtures', () => {
+  it('grounds a period-correct swing-state governor for the elections storyline', async () => {
+    const campaign = createTwilightCampaign(61);
+    const result = await runTurn(campaign, 'Call Governor Shapiro and ask him to convene swing-state election officials privately.', { persist: false });
+    expect(result.campaign.state.entities.josh_shapiro).toBeDefined();
+    expect(result.campaign.state.facts.fact_pa_governor?.provenance).toBe('VERIFIED_FACT');
+    expect(result.audit.dryStrategy.mechanisms.some((mechanism) => mechanism.targetIds.includes('josh_shapiro'))).toBe(true);
   });
 });
 
