@@ -43,5 +43,7 @@ describe('player and developer visibility boundaries', () => {
     const why = JSON.stringify(buildPlayerWhy(nextCampaign, audit));
     expect(why).not.toContain('nuclear torpedo');
     expect(why).not.toContain('actorActions');
+    expect(why).not.toContain(`${Math.round(audit.selectedOutcome.probability * 100)}%`);
+    expect(why).not.toContain('adjudicated outcome band');
   });
 });

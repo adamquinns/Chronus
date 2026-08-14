@@ -12,11 +12,11 @@ import {
   ValidationIssue,
 } from './domain';
 import { normalizeDistribution } from './calibration';
-import { auditCompilerFidelity, checkFeasibility, classifyTurn, compileStrategy } from './compiler';
+import { auditCompilerFidelity, checkFeasibility, classifyTurn, compileStrategy, normalizeStrategyGraph } from './compiler';
 import { ModelGateway } from './model';
-import { adjudicationSchema } from './schemas';
+import { adjudicationSchema, normalizeAdjudicationWire } from './schemas';
 import { authoritativeSnapshot } from './projections';
-import { adjudicate, fallbackAdjudication, narrate, runRedTeam, sanitizeAdjudication, simulateActors } from './resolution';
+import { adjudicate, enforceHardFeasibility, fallbackAdjudication, narrate, runRedTeam, sanitizeAdjudication, simulateActors } from './resolution';
 import { commitEffects, evolvePendingProcesses, updateBeliefsFromChanges, validateWorld } from './state';
 import { drawSeeded, selectWeighted } from './rng';
 import { autonomousWorldEffects, historicalPriorWeight, retrievePrecedents } from './precedent';
@@ -105,7 +105,7 @@ const getSecondOpinion = async (
       content: JSON.stringify({ dryStrategy: graph, feasibility, actorActions, redTeam, causalPrecedents: precedents, robustnessBranches: counterfactualBranches, historicalPriorWeight: historicalPriorWeight(campaign.state), authoritativeState: authoritativeSnapshot(campaign.state) }),
     },
   ], adjudicationSchema, 'IndependentAdjudication');
-  return result.value;
+  return normalizeAdjudicationWire(result.value);
 };
 
 const repairAdjudication = async (
@@ -124,7 +124,7 @@ const repairAdjudication = async (
   const result = await gateway.callJson(role, [
     {
       role: 'system',
-      content: 'Repair an invalid causal adjudication. Preserve supported judgments, remove only invalid effects, use existing targets and mechanisms, obey feasibility and scenario calibration, and return a complete adjudication. Do not add capabilities or arbitrary deltas.',
+      content: 'Repair an invalid causal adjudication. Preserve supported judgments, remove only invalid effects, use existing targets and mechanisms, obey feasibility and scenario calibration, and return a complete adjudication. Every recommended effect must include a non-empty cause and dependencies array. Do not add capabilities or arbitrary deltas.',
     },
     {
       role: 'user',
@@ -141,7 +141,8 @@ const repairAdjudication = async (
       }),
     },
   ], adjudicationSchema, role === 'validator' ? 'RepairedAdjudication' : 'EscalatedAdjudication');
-  return { ...result.value, outcomeBands: normalizeDistribution(result.value.outcomeBands) };
+  const normalized = normalizeAdjudicationWire(result.value);
+  return { ...normalized, outcomeBands: normalizeDistribution(normalized.outcomeBands) };
 };
 
 export const runTurn = async (campaign: Campaign, rawDirective: string, options: RunTurnOptions = {}): Promise<TurnResult> => {
@@ -165,7 +166,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
   progress(options, 'COMPILE', 'Compiling directive', 'Removing rhetoric and extracting causal mechanisms.');
   let dryStrategy = await compileStrategy(rawDirective, campaign.state, campaign.beliefs, options.gateway);
   const compilerFidelity: CompilerFidelity = await auditCompilerFidelity(rawDirective, dryStrategy, options.gateway);
-  if (!compilerFidelity.faithful && compilerFidelity.repairedGraph) dryStrategy = compilerFidelity.repairedGraph;
+  if (!compilerFidelity.faithful && compilerFidelity.repairedGraph) dryStrategy = normalizeStrategyGraph(compilerFidelity.repairedGraph, campaign.state);
   const routing = classifyTurn(dryStrategy, campaign.state);
   const depth = routing.depth;
   progress(options, 'COMPILE', 'Strategy interpreted', 'Rhetoric removed and causal mechanisms extracted.', 'COMPLETED');
@@ -223,6 +224,8 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
   );
   const secondPromise = needsSecondOpinion && options.gateway
     ? getSecondOpinion(campaign, dryStrategy, feasibility, actorActions, redTeam, precedents, counterfactualBranches, options.gateway)
+      .then((value) => ({ value }))
+      .catch((error: unknown) => ({ error }))
     : undefined;
   let rawAdjudication: Adjudication;
   const recoveredValidation: ValidationIssue[] = [];
@@ -236,15 +239,24 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
       message: error instanceof Error ? error.message : 'Primary adjudication failed.',
     });
   }
+  const hardFiltered = enforceHardFeasibility(rawAdjudication, feasibility);
+  rawAdjudication = hardFiltered.adjudication;
+  recoveredValidation.push(...hardFiltered.removedEffectIds.map((effectId) => ({
+    code: 'HARD_FEASIBILITY_EFFECT_REMOVED', severity: 'WARNING' as const,
+    message: `${effectId} was removed before resolution because its mechanism is hard-impossible.`,
+  })));
   let proposalFailures = validateAdjudicationProposal(rawAdjudication, dryStrategy, feasibility, campaign.state, actorActions)
     .filter((issue) => issue.severity === 'ERROR');
-  if ((proposalFailures.length || recoveredValidation.length) && options.gateway) {
-    const originalFailures = proposalFailures.length ? proposalFailures : recoveredValidation;
+  if (proposalFailures.length && options.gateway) {
+    const originalFailures = proposalFailures;
     try {
       rawAdjudication = await repairAdjudication(
         'validator', campaign, dryStrategy, feasibility, actorActions, redTeam, precedents, counterfactualBranches,
         rawAdjudication, originalFailures, options.gateway,
       );
+      const filteredRepair = enforceHardFeasibility(rawAdjudication, feasibility);
+      rawAdjudication = filteredRepair.adjudication;
+      recoveredValidation.push(...filteredRepair.removedEffectIds.map((effectId) => ({ code: 'HARD_FEASIBILITY_EFFECT_REMOVED', severity: 'WARNING' as const, message: `${effectId} was removed from repaired adjudication because its mechanism is hard-impossible.` })));
       proposalFailures = validateAdjudicationProposal(rawAdjudication, dryStrategy, feasibility, campaign.state, actorActions)
         .filter((issue) => issue.severity === 'ERROR');
       recoveredValidation.push(...originalFailures.map((issue) => ({ ...issue, code: `RECOVERED_${issue.code}`, severity: 'WARNING' as const })));
@@ -257,6 +269,9 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
           'deep_second_opinion', campaign, dryStrategy, feasibility, actorActions, redTeam, precedents, counterfactualBranches,
           rawAdjudication, proposalFailures, options.gateway,
         );
+        const filteredEscalation = enforceHardFeasibility(rawAdjudication, feasibility);
+        rawAdjudication = filteredEscalation.adjudication;
+        recoveredValidation.push(...filteredEscalation.removedEffectIds.map((effectId) => ({ code: 'HARD_FEASIBILITY_EFFECT_REMOVED', severity: 'WARNING' as const, message: `${effectId} was removed from escalated adjudication because its mechanism is hard-impossible.` })));
         const escalatedFailures = validateAdjudicationProposal(rawAdjudication, dryStrategy, feasibility, campaign.state, actorActions)
           .filter((issue) => issue.severity === 'ERROR');
         if (escalatedFailures.length) throw new Error(escalatedFailures[0].message);
@@ -272,7 +287,9 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
   let disagreement: ModelDisagreement = { compared: false, material: false, severityScore: 0, differences: [], response: 'NONE' };
   if (needsSecondOpinion && options.gateway) {
     try {
-      const second = sanitizeAdjudication(await secondPromise!, campaign.state, depth, feasibility, actorActions);
+      const secondResult = await secondPromise!;
+      if ('error' in secondResult) throw secondResult.error;
+      const second = sanitizeAdjudication(secondResult.value, campaign.state, depth, feasibility, actorActions);
       const reconciled = reconcileAdjudications(adjudication, second);
       adjudication = reconciled.adjudication;
       disagreement = reconciled.disagreement;

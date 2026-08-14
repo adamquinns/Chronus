@@ -19,9 +19,9 @@ player directive
 → player-visible narrative and causal audit
 ```
 
-Campaign state, sparse beliefs, and turn audits are stored in IndexedDB. Runtime OpenRouter access is BYOK and stored separately in the browser profile. Campaigns can be exported as JSON.
+Campaign state, sparse beliefs, actor memory, and turn audits are stored in IndexedDB. Runtime OpenRouter access is BYOK and stored separately in the browser profile. Campaigns can be exported and restored as validated JSON packages.
 
-The current golden vertical slice is **October 27, 1962—the Cuban Missile Crisis on Black Saturday**.
+The build includes the **October 27, 1962 Cuban Missile Crisis** golden vertical slice, a **1975 political-coalition campaign**, a **fictional mid-century military campaign**, and validated AI-assisted custom scenario generation.
 
 ## Run locally
 
@@ -42,7 +42,7 @@ npm test
 npm run build
 ```
 
-The deterministic suite covers seeded replay, rhetoric stripping, information boundaries, authority and resource constraints, causal provenance, state validation, and the complete turn pipeline.
+The 53-test deterministic suite covers seeded replay, rhetoric stripping, information boundaries, authority and resource constraints, causal provenance, state validation, bounded recovery, persistence and rollback, objective continuity, custom authoring, and four 10–15-turn campaign suites.
 
 ## Run behavioral evals
 
@@ -58,7 +58,7 @@ Then run:
 npm run eval
 ```
 
-The eval harness enforces request, token, and dollar ceilings and writes its latest machine-readable report to `evals/results/latest.json`. Do not prefix the key with `VITE_`; that would expose it in the browser bundle.
+The eval harness enforces request, token, and dollar ceilings. It runs structural gates, a faithful retired-d20 comparison, live behavioral checks, and a final aggregate gate. Machine-readable evidence is written under `evals/results/`, with the release decision in `evals/results/complete.json`. Do not prefix the key with `VITE_`; that would expose it in the browser bundle.
 
 ## Model roles
 

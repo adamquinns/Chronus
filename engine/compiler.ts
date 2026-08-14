@@ -13,6 +13,7 @@ import { fidelitySchema, strategyGraphSchema } from './schemas';
 import { playerVisibleState } from './projections';
 
 export const deRhetoricize = (directive: string) => directive
+  .replace(/^(?:(?:this\s+is|behold)\s+)?my\b[^:]{0,240}\b(?:brilliant|genius|masterful|masterstroke|perfect|foolproof|guaranteed|unbeatable)\b[^:]*:\s*/i, '')
   .replace(/\b(?:brilliant|genius|masterful|masterstroke|perfect|foolproof|obviously|certainly|guaranteed|unbeatable)\b/gi, '')
   .replace(/\bI\s+(?:know|am certain|guarantee|assure you)\b[^,.;:]*/gi, '')
   .replace(/\s{2,}/g, ' ')
@@ -92,6 +93,38 @@ export const compileDeterministically = (directive: string, state: WorldState): 
   };
 };
 
+export const normalizeStrategyGraph = (graph: StrategyGraph, state: WorldState): StrategyGraph => {
+  const unknownReferences: string[] = [];
+  const seenIds = new Set<string>();
+  const mechanisms = graph.mechanisms.map((mechanism, index) => {
+    let id = mechanism.id || `m${index + 1}`;
+    if (seenIds.has(id)) id = `${id}_${index + 1}`;
+    seenIds.add(id);
+    const unknownTargets = mechanism.targetIds.filter((targetId) => !state.entities[targetId]);
+    unknownReferences.push(...unknownTargets.map((targetId) => `Unresolved target reference “${targetId}” in mechanism ${id}.`));
+    const literalTargets = referencedIds(`${mechanism.specifiedDetail} ${mechanism.objective}`, state);
+    const targetIds = [...new Set([
+      ...mechanism.targetIds.filter((targetId) => Boolean(state.entities[targetId])),
+      ...literalTargets,
+    ])];
+    const actorIds = [...new Set(mechanism.actorIds.filter((actorId) => Boolean(state.entities[actorId])))];
+    if (!actorIds.length) actorIds.push(state.manifest.playerId);
+    const resourceClaims = mechanism.resourceClaims.filter((claim) => {
+      const valid = Boolean(state.resources[claim.resourceId]) && Number.isFinite(claim.amount) && claim.amount >= 0;
+      if (!valid) unknownReferences.push(`Invalid resource claim “${claim.resourceId}” in mechanism ${id}.`);
+      return valid;
+    });
+    return { ...mechanism, id, targetIds, actorIds, resourceClaims };
+  });
+  const ids = new Set(mechanisms.map((mechanism) => mechanism.id));
+  return {
+    ...graph,
+    mechanisms,
+    sequencing: graph.sequencing.filter((id) => ids.has(id)),
+    unspecified: [...new Set([...graph.unspecified, ...unknownReferences])],
+  };
+};
+
 export const compileStrategy = async (
   directive: string,
   state: WorldState,
@@ -107,10 +140,10 @@ export const compileStrategy = async (
       },
       {
         role: 'user',
-        content: JSON.stringify({ deRhetoricizedDirective: deRhetoricize(directive), permittedContext: playerVisibleState(state, beliefs) }),
+        content: JSON.stringify({ deRhetoricizedDirective: deRhetoricize(directive).toLocaleLowerCase('en-US'), permittedContext: playerVisibleState(state, beliefs) }),
       },
     ], strategyGraphSchema, 'StrategyGraph');
-    return result.value;
+    return normalizeStrategyGraph(result.value, state);
   } catch {
     return compileDeterministically(directive, state);
   }
@@ -202,7 +235,7 @@ export const checkFeasibility = (graph: StrategyGraph, state: WorldState): Feasi
     let unmechanizedControlRequest = false;
     const matchingRules = state.manifest.authorityRules.filter((rule) =>
       rule.actorId === playerId
-      && mechanism.targetIds.includes(rule.targetId)
+      && (mechanism.targetIds.includes(rule.targetId) || (!mechanism.targetIds.length && rule.targetId === playerId))
       && rule.mechanismKinds.includes(mechanism.kind));
     const controlRank = { NONE: 0, INFLUENCE: 1, DELEGATED: 2, DIRECT: 3 } as const;
     const controlMode: ControlMode = matchingRules.reduce<ControlMode>((best, rule) =>
@@ -212,6 +245,7 @@ export const checkFeasibility = (graph: StrategyGraph, state: WorldState): Feasi
     const capabilityEvidence = capabilityPattern
       ? capableEntities.flatMap((entity) => entity.capabilities.filter((capability) => capabilityPattern.test(capability)))
       : capableEntities.flatMap((entity) => entity.capabilities).slice(0, 3);
+    capabilityEvidence.push(...matchingRules.map((rule) => `Explicit ${rule.mode.toLowerCase()} authority for ${rule.targetId}`));
     const specificCapabilityChecks: Array<[RegExp, RegExp]> = [
       [/carrier|air wing/i, /carrier|air wing/i],
       [/nuclear|atomic/i, /nuclear|atomic|strategic force/i],

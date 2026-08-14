@@ -28,10 +28,9 @@ export const projectPlayerVisibleChanges = (
 export const buildPlayerWhy = (campaign: Campaign, audit: TurnAudit): PlayerWhy => {
   const viable = audit.feasibility.filter((finding) => finding.feasible).length;
   const impossible = audit.feasibility.filter((finding) => finding.classification === 'IMPOSSIBLE').length;
-  const selectedProbability = audit.selectedOutcome.probability;
   const uncertainty = audit.randomDraw === undefined
     ? 'No residual uncertainty draw was needed.'
-    : `Residual uncertainty selected “${audit.selectedOutcome.label}” from a ${Math.round(selectedProbability * 100)}% adjudicated outcome band.`;
+    : 'Residual uncertainty affected the result after the feasible mechanisms were attempted.';
   return {
     summary: impossible === audit.feasibility.length
       ? `The package had no feasible causal mechanism. ${uncertainty}`

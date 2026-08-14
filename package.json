@@ -10,7 +10,12 @@
     "lint": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "eval": "node --import tsx evals/run.ts",
+    "eval": "npm run eval:structural && npm run eval:baseline && npm run eval:live && npm run eval:aggregate",
+    "eval:structural": "vitest run engine/__tests__/evals.test.ts engine/__tests__/multiTurn.test.ts engine/__tests__/recovery.test.ts --reporter=json --outputFile=evals/results/structural.json",
+    "eval:baseline": "node --import tsx evals/baseline-report.ts",
+    "eval:live": "node --import tsx evals/run.ts",
+    "eval:custom": "node --import tsx evals/custom-live.ts",
+    "eval:aggregate": "node --import tsx evals/aggregate.ts",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
   },

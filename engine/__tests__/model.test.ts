@@ -1,10 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { OpenRouterGateway } from '../model';
+import { OpenRouterGateway, providerStrictJsonSchema } from '../model';
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe('content-addressed model cache', () => {
+  it('adapts optional Zod properties to required nullable provider fields', () => {
+    const schema = providerStrictJsonSchema(z.toJSONSchema(z.object({ required: z.string(), optional: z.number().optional() })) as Record<string, unknown>);
+    expect(schema.required).toEqual(['required', 'optional']);
+    expect((schema.properties as Record<string, { anyOf?: unknown[] }>).optional.anyOf).toHaveLength(2);
+  });
   it('shares identical in-flight structured calls', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       choices: [{ message: { content: JSON.stringify({ kind: 'DIPLOMACY' }) } }],

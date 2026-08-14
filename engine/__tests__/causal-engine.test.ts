@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { compileDeterministically, checkFeasibility } from '../compiler';
+import { compileDeterministically, checkFeasibility, normalizeStrategyGraph } from '../compiler';
 import { perceivedStrategyForActor, playerVisibleState } from '../projections';
 import { createCubanCampaign } from '../scenarios';
-import { commitEffects, validateWorld } from '../state';
+import { commitEffects, evaluateGoal, validateWorld } from '../state';
 import { drawSeeded, selectWeighted } from '../rng';
 import { ProposedEffect, StrategyGraph } from '../domain';
 import { advanceScenarioTime } from '../time';
-import { createMilitaryCampaign } from '../curatedScenarios';
+import { createCoalitionCampaign, createMilitaryCampaign } from '../curatedScenarios';
 import { evolvePendingProcesses } from '../state';
 
 describe('seeded uncertainty', () => {
@@ -25,6 +25,8 @@ describe('scenario time and ongoing processes', () => {
     campaign.state.metrics.nuclear_tension = 90;
     const next = advanceScenarioTime(campaign.state);
     expect(next.elapsedMinutes).toBe(60);
+    expect(next.dateLabel).toBe('1962-10-27 18:00:00 UTC');
+    expect(next.dateLabel).not.toContain('Turn');
   });
 
   it('applies authored process costs until the process matures', () => {
@@ -34,13 +36,42 @@ describe('scenario time and ongoing processes', () => {
   });
 });
 
+describe('typed objective continuity', () => {
+  it('ends the campaign only for a terminal victory or defeat', () => {
+    const victory = createCubanCampaign().state;
+    victory.resources.soviet_missiles_ready.amount = 0;
+    const achieved = evaluateGoal(victory);
+    expect(achieved.goal.status).toBe('ACHIEVED');
+    expect(achieved.goal.outcomeClass).toBe('VICTORY');
+    expect(achieved.gameOver).toBe(true);
+
+    const defeat = createCubanCampaign().state;
+    defeat.metrics.nuclear_tension = 100;
+    const failed = evaluateGoal(defeat);
+    expect(failed.goal.status).toBe('FAILED');
+    expect(failed.gameOver).toBe(true);
+  });
+
+  it('moves a nonterminal deadline into the authored successor objective', () => {
+    const coalition = createCoalitionCampaign(42).state;
+    coalition.turn = coalition.goal.deadlineTurn;
+
+    const continued = evaluateGoal(coalition);
+    expect(continued.goal.id).toBe('protect_decentralized_resistance');
+    expect(continued.goal.status).toBe('ACTIVE');
+    expect(continued.gameOver).toBe(false);
+  });
+});
+
 describe('rhetoric invariance', () => {
   it('does not convert praise into a strategic mechanism', () => {
     const state = createCubanCampaign().state;
     const plain = compileDeterministically('Contact Khrushchev through a diplomatic backchannel.', state);
     const boastful = compileDeterministically('My brilliant foolproof masterstroke: contact Khrushchev through a diplomatic backchannel.', state);
+    const florid = compileDeterministically('This is my brilliant, foolproof masterstroke and guaranteed to save the world: contact Khrushchev through a diplomatic backchannel.', state);
     expect(plain.mechanisms[0].kind).toBe('DIPLOMACY');
     expect(boastful.mechanisms[0].kind).toBe('DIPLOMACY');
+    expect(florid.mechanisms.map(({ kind, targetIds }) => ({ kind, targetIds }))).toEqual(plain.mechanisms.map(({ kind, targetIds }) => ({ kind, targetIds })));
     expect(JSON.stringify(boastful)).not.toMatch(/brilliant|foolproof|masterstroke/i);
   });
 });
@@ -68,6 +99,14 @@ describe('information boundaries', () => {
 });
 
 describe('hard feasibility', () => {
+  it('removes phantom compiler IDs and resolves literal authoritative targets', () => {
+    const campaign = createCubanCampaign();
+    const graph = compileDeterministically('Contact Khrushchev through the backchannel.', campaign.state);
+    graph.mechanisms[0].targetIds = ['premier_khrushchev_nonexistent'];
+    const normalized = normalizeStrategyGraph(graph, campaign.state);
+    expect(normalized.mechanisms[0].targetIds).toEqual(['khrushchev']);
+    expect(normalized.unspecified[0]).toContain('premier_khrushchev_nonexistent');
+  });
   it('does not grant direct control over an enemy actor', () => {
     const campaign = createCubanCampaign();
     const graph = compileDeterministically('Order Khrushchev to surrender immediately.', campaign.state);

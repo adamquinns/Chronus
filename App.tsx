@@ -3,9 +3,9 @@ import { ApiKeyGateway } from './components/ApiKeyGateway';
 import { CausalGameInterface } from './components/CausalGameInterface';
 import { Campaign } from './engine/domain';
 import { createCampaign } from './engine/scenarios';
-import { loadMostRecentCampaign, saveCampaign } from './engine/persistence';
+import { importCampaign, loadMostRecentCampaign, saveCampaign } from './engine/persistence';
 import { OpenRouterGateway } from './engine/model';
-import { Clock3, PlayCircle, RotateCcw, ShieldCheck } from 'lucide-react';
+import { Clock3, PlayCircle, RotateCcw, ShieldCheck, Upload } from 'lucide-react';
 import { generateCustomScenario } from './engine/authoring';
 
 type Screen = 'GATEWAY' | 'MENU' | 'PLAYING';
@@ -20,6 +20,7 @@ const App: React.FC = () => {
   const [customPrompt, setCustomPrompt] = useState('');
   const [generatingScenario, setGeneratingScenario] = useState(false);
   const [customError, setCustomError] = useState<string>();
+  const [importError, setImportError] = useState<string>();
 
   useEffect(() => {
     loadMostRecentCampaign().then(setResume).catch(console.error).finally(() => setLoading(false));
@@ -52,6 +53,22 @@ const App: React.FC = () => {
       setCustomError(error instanceof Error ? error.message : 'Custom scenario generation failed.');
     } finally {
       setGeneratingScenario(false);
+    }
+  };
+
+  const importFromFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setImportError(undefined);
+    try {
+      const next = importCampaign(await file.text());
+      await saveCampaign(next);
+      setResume(next);
+      setCampaign(next);
+      setScreen('PLAYING');
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : 'Campaign import failed.');
     }
   };
 
@@ -96,11 +113,19 @@ const App: React.FC = () => {
           </> : <p className="text-gray-500">No saved campaign found on this device.</p>}
         </div>
       </div>
+      <div className="mt-5 bg-gray-900 border border-gray-700 rounded-xl p-6">
+        <div className="text-xs font-mono text-cyan-400 uppercase tracking-widest mb-2">Recovery</div>
+        <h2 className="text-2xl font-bold">Import a campaign</h2>
+        <p className="text-gray-400 mt-2">Restore a validated Chronus export, including authoritative state, beliefs, actor memory, and audit history.</p>
+        <input id="campaign-import" aria-label="Campaign file" type="file" accept="application/json,.json" onChange={importFromFile} className="sr-only"/>
+        <label htmlFor="campaign-import" className="mt-4 w-full py-3 bg-cyan-800 hover:bg-cyan-700 rounded font-bold flex items-center justify-center gap-2 cursor-pointer"><Upload size={18}/> Import campaign file</label>
+        {importError && <p role="alert" className="mt-2 text-sm text-red-400">{importError}</p>}
+      </div>
       <div className="mt-5 bg-gray-900 border border-purple-900/50 rounded-xl p-6">
         <div className="text-xs font-mono text-purple-400 uppercase tracking-widest mb-2">Validated custom scenario</div>
         <h2 className="text-2xl font-bold">Create another divergence</h2>
         <p className="text-gray-400 mt-2">Describe a historical or fictional starting point, the role you want to occupy, and the central problem. AI proposes the package; Chronus validates it before play.</p>
-        <textarea value={customPrompt} onChange={(event) => setCustomPrompt(event.target.value)} rows={3} placeholder="What if Napoleon won at Waterloo? Put me in the role of…" className="mt-4 w-full bg-black border border-gray-700 rounded p-3 text-sm focus:border-purple-500 focus:outline-none"/>
+        <textarea aria-label="Custom scenario premise" value={customPrompt} onChange={(event) => setCustomPrompt(event.target.value)} rows={3} placeholder="What if Napoleon won at Waterloo? Put me in the role of…" className="mt-4 w-full bg-black border border-gray-700 rounded p-3 text-sm focus:border-purple-500 focus:outline-none"/>
         {customError && <p className="mt-2 text-sm text-red-400">{customError}</p>}
         <button onClick={beginCustom} disabled={!gateway || !customPrompt.trim() || generatingScenario} className="mt-3 w-full py-3 bg-purple-700 hover:bg-purple-600 disabled:opacity-40 rounded font-bold">
           {generatingScenario ? 'Researching and validating scenario…' : 'Generate validated scenario'}

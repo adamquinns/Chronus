@@ -57,7 +57,8 @@ export const evaluateGoal = (state: WorldState): WorldState => {
     transition = 'DEADLINE';
   }
   if (transition && !next.gameOver) {
-    const successor = next.goal.successors?.find((candidate) => candidate.on === transition);
+    const successor = next.goal.successors?.find((candidate) => candidate.on === transition)
+      ?? (transition === 'DEADLINE' ? next.goal.successors?.find((candidate) => candidate.on === 'FAILED') : undefined);
     if (successor) {
       next.goal = structuredClone(successor.goal);
       next.gameOver = false;

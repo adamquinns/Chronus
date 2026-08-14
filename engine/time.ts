@@ -24,6 +24,6 @@ export const advanceScenarioTime = (state: WorldState): WorldState => {
   else date.setUTCMinutes(date.getUTCMinutes() + minutesFor(activeScale));
   next.currentDateTime = date.toISOString();
   next.elapsedMinutes += minutesFor(activeScale);
-  next.dateLabel = `${date.toISOString().replace('T', ' ').replace('.000Z', ' UTC')} · Turn ${next.turn}`;
+  next.dateLabel = date.toISOString().replace('T', ' ').replace('.000Z', ' UTC');
   return next;
 };

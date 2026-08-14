@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { initializeScenarioDraft, ScenarioDraft } from '../authoring';
+import { initializeScenarioDraft, normalizeGeneratedScenarioDraft, ScenarioDraft } from '../authoring';
 import { validateScenario } from '../scenario';
 
 const draft = (): ScenarioDraft => ({
@@ -59,5 +59,27 @@ describe('scenario authoring and initialization', () => {
     const invalid = draft();
     invalid.facts[0].sourceRefs = [];
     expect(() => initializeScenarioDraft(invalid, 42)).toThrow(/source reference/i);
+  });
+
+  it('closes model-authored belief metadata over the final roster and fact set', () => {
+    const generated = draft();
+    generated.facts.push({
+      id: 'governor_private_fact',
+      statement: 'The governor privately plans to defect.',
+      provenance: 'SCENARIO_ABSTRACTION',
+      confidence: 'MEDIUM',
+      visibility: { classification: 'ACTOR_PRIVATE', actorIds: ['governor'], discoverable: true },
+      sourceRefs: [],
+    });
+    generated.beliefOverrides.push(
+      { actorId: 'discarded_actor', subjectId: 'governor', field: 'resolve', confidence: 'LOW', sourceFactIds: [] },
+      { actorId: 'organizer', subjectId: 'discarded_actor', field: 'resolve', confidence: 'LOW', sourceFactIds: [] },
+    );
+    generated.beliefOverrides[0]!.sourceFactIds = ['order_announced', 'governor_private_fact', 'discarded_fact'];
+
+    const normalized = normalizeGeneratedScenarioDraft(generated);
+    expect(normalized.beliefOverrides).toHaveLength(1);
+    expect(normalized.beliefOverrides[0]!.sourceFactIds).toEqual(['order_announced']);
+    expect(() => initializeScenarioDraft(normalized, 42)).not.toThrow();
   });
 });

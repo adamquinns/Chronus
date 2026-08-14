@@ -16,7 +16,7 @@ import {
 } from './domain';
 import { normalizeDistribution } from './calibration';
 import { ModelGateway } from './model';
-import { actorActionsSchema, adjudicationSchema, narrativeSchema, redTeamSchema } from './schemas';
+import { actorActionsSchema, adjudicationSchema, narrativeSchema, normalizeAdjudicationWire, redTeamSchema } from './schemas';
 import { actorVisibleState, authoritativeSnapshot, perceivedStrategyForActor, playerVisibleState } from './projections';
 import { historicalPriorWeight } from './precedent';
 import { canAccess } from './visibility';
@@ -289,11 +289,12 @@ export const adjudicate = async (
     const result = await gateway.callJson('adjudicator', [
       {
         role: 'system',
-        content: 'Adjudicate causal mechanisms, not rhetoric. Hard state is authoritative. Recommend bounded impact classes, never arbitrary point values. Use only existing targets. Actor responses are additional causal forces and may use mechanismId actor:<actorId>; player effects must use a supplied strategy mechanism ID. A good plan may fail; a bad plan may occasionally succeed. Do not invent capabilities. Be concise: reasons under 80 words, at most 12 effects and 5 outcome bands. Probabilities must sum approximately to 1 and reference recommended effect IDs.',
+        content: 'Adjudicate causal mechanisms, not rhetoric. Hard state is authoritative. Recommend bounded impact classes, never arbitrary point values. Use only existing targets. Actor responses are additional causal forces and may use mechanismId actor:<actorId>; player effects must use a supplied strategy mechanism ID. Every recommended effect must include a non-empty cause string and dependencies array (use [] when none). A good plan may fail; a bad plan may occasionally succeed. Do not invent capabilities. Be concise: reasons under 80 words, at most 12 effects and 5 outcome bands. Probabilities must sum approximately to 1 and reference recommended effect IDs.',
       },
       { role: 'user', content: JSON.stringify(prompt) },
     ], adjudicationSchema, 'Adjudication');
-    return { ...result.value, outcomeBands: normalizeDistribution(result.value.outcomeBands) };
+    const normalized = normalizeAdjudicationWire(result.value);
+    return { ...normalized, outcomeBands: normalizeDistribution(normalized.outcomeBands) };
   } catch (error) {
     throw new Error(`Primary adjudication failed: ${error instanceof Error ? error.message : 'unknown model error'}`);
   }
@@ -333,6 +334,24 @@ export const sanitizeAdjudication = (
     effectIds: band.effectIds.filter((id) => effectIds.has(id)),
   })));
   return { ...adjudication, recommendedEffects, outcomeBands };
+};
+
+export const enforceHardFeasibility = (
+  adjudication: Adjudication,
+  feasibility: FeasibilityFinding[],
+): { adjudication: Adjudication; removedEffectIds: string[] } => {
+  const impossible = new Set(feasibility.filter((finding) => finding.classification === 'IMPOSSIBLE').map((finding) => finding.mechanismId));
+  const removedEffectIds = adjudication.recommendedEffects.filter((effect) => impossible.has(effect.mechanismId)).map((effect) => effect.id);
+  if (!removedEffectIds.length) return { adjudication, removedEffectIds };
+  const removed = new Set(removedEffectIds);
+  return {
+    removedEffectIds,
+    adjudication: {
+      ...adjudication,
+      recommendedEffects: adjudication.recommendedEffects.filter((effect) => !removed.has(effect.id)),
+      outcomeBands: normalizeDistribution(adjudication.outcomeBands.map((band) => ({ ...band, effectIds: band.effectIds.filter((id) => !removed.has(id)) }))),
+    },
+  };
 };
 
 export const narrate = async (

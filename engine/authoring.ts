@@ -7,6 +7,33 @@ import { canAccess, visibility } from './visibility';
 
 export type ScenarioDraft = z.infer<typeof scenarioDraftSchema>;
 
+/**
+ * Model-authored belief overrides are optional scenario texture. A model can
+ * legitimately revise its actor roster while leaving one of those sparse
+ * overrides behind. Keep the authoritative package closed over the final
+ * roster and fact set instead of allowing optional metadata to invalidate an
+ * otherwise playable scenario.
+ */
+export const normalizeGeneratedScenarioDraft = (draftInput: ScenarioDraft): ScenarioDraft => {
+  const draft = structuredClone(draftInput);
+  const entityIds = new Set([draft.player.id, ...draft.entities.map((entity) => entity.id)]);
+  const facts = new Map(draft.facts.map((fact) => [fact.id, fact]));
+  draft.beliefOverrides = draft.beliefOverrides
+    .filter((override) => entityIds.has(override.actorId) && entityIds.has(override.subjectId))
+    .map((override) => ({
+      ...override,
+      sourceFactIds: override.sourceFactIds.filter((factId) => {
+        const fact = facts.get(factId);
+        return Boolean(fact && canAccess(
+          visibility(fact.visibility.classification, fact.visibility.actorIds, { discoverable: fact.visibility.discoverable }),
+          override.actorId,
+          draft.player.id,
+        ));
+      }),
+    }));
+  return draft;
+};
+
 const toVisibility = (draft: ScenarioDraft['facts'][number]['visibility']) =>
   visibility(draft.classification, draft.actorIds, { discoverable: draft.discoverable });
 
@@ -168,5 +195,5 @@ export const generateCustomScenario = async (
     { role: 'system', content: 'Design a complete playable Chronus scenario package. Use stable snake_case IDs. Include explicit visibility for every item, sparse belief overrides where uncertainty or error is strategically material, causal arcs with participants, resources, unresolved uncertainties, calibration, authority through entity control and relationships, historical analogs where grounded, and a viable but non-prescriptive objective. Verified facts require source references. Do not pre-script future outcomes.' },
     { role: 'user', content: JSON.stringify({ playerRequest: premise, research: research.value }) },
   ], scenarioDraftSchema, 'ScenarioDraft');
-  return initializeScenarioDraft(draft.value, seed);
+  return initializeScenarioDraft(normalizeGeneratedScenarioDraft(draft.value), seed);
 };

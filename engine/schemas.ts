@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Adjudication } from './domain';
 
 const confidence = z.enum(['VERY_LOW', 'LOW', 'MEDIUM', 'HIGH', 'VERY_HIGH']);
 const impact = z.enum(['NONE', 'TRIVIAL', 'MINOR', 'MODERATE', 'MAJOR', 'SEVERE', 'SYSTEMIC']);
@@ -74,13 +75,21 @@ export const effectSchema = z.object({
   dependencies: z.array(z.string()),
   actorId: z.string().optional(),
   proposedDelta: z.number().optional(),
-  setValue: z.unknown().optional(),
+  setValue: z.union([
+    z.string(), z.number(), z.boolean(),
+    z.array(z.union([z.string(), z.number(), z.boolean()])),
+  ]).optional(),
+});
+
+const adjudicationEffectSchema = effectSchema.extend({
+  cause: z.union([z.string(), z.array(z.string())]).default(''),
+  dependencies: z.union([z.array(z.string()), z.string()]).default([]),
 });
 
 export const adjudicationSchema = z.object({
   summary: z.string().max(1200),
   mechanismFindings: z.array(z.object({ mechanismId: z.string(), engagement, reason: z.string().max(800), confidence })).max(12),
-  recommendedEffects: z.array(effectSchema).max(16),
+  recommendedEffects: z.array(adjudicationEffectSchema).max(16),
   outcomeBands: z.array(z.object({
     id: z.string(),
     label: z.string(),
@@ -91,6 +100,15 @@ export const adjudicationSchema = z.object({
   assumptions: z.array(z.string().max(500)).max(10),
   unknowns: z.array(z.string().max(500)).max(10),
   confidence,
+});
+
+export const normalizeAdjudicationWire = (value: z.infer<typeof adjudicationSchema>): Adjudication => ({
+  ...value,
+  recommendedEffects: value.recommendedEffects.map((effect) => ({
+    ...effect,
+    cause: Array.isArray(effect.cause) ? effect.cause.join(' ') : effect.cause,
+    dependencies: Array.isArray(effect.dependencies) ? effect.dependencies : [effect.dependencies],
+  })),
 });
 
 export const narrativeSchema = z.object({
@@ -159,7 +177,7 @@ export const scenarioDraftSchema = z.object({
   unresolvedUncertainties: z.array(z.string()).min(1).max(20),
   beliefOverrides: z.array(z.object({
     actorId: z.string(), subjectId: z.string(), field: z.string(), estimate: z.number().optional(),
-    range: z.tuple([z.number(), z.number()]).optional(), categorical: z.string().optional(), confidence,
+    range: z.array(z.number()).length(2).optional(), categorical: z.string().optional(), confidence,
     sourceFactIds: z.array(z.string()),
   })).max(60).default([]),
 });

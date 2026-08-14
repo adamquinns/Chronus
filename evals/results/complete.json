@@ -1,0 +1,319 @@
+{
+  "generatedAt": "2026-08-14T09:23:01.471Z",
+  "passed": true,
+  "structural": {
+    "passedTests": 19,
+    "failedTests": 0
+  },
+  "baseline": {
+    "baseline": 0,
+    "causal": 7,
+    "possible": 7
+  },
+  "live": {
+    "passed": 14,
+    "failed": 0,
+    "results": [
+      {
+        "name": "Rhetoric invariance",
+        "passed": true,
+        "detail": "Equivalent mechanisms compiled identically.",
+        "evidence": {
+          "plain": [
+            "DIPLOMACY:khrushchev",
+            "DIPLOMACY:khrushchev",
+            "PUBLIC_COMMUNICATION:khrushchev,nato,soviet_cuba"
+          ],
+          "boastful": [
+            "DIPLOMACY:khrushchev",
+            "DIPLOMACY:khrushchev",
+            "PUBLIC_COMMUNICATION:khrushchev,nato,soviet_cuba"
+          ]
+        }
+      },
+      {
+        "name": "Compiler charity",
+        "passed": true,
+        "detail": "Vague leverage remained unspecified.",
+        "evidence": {
+          "graph": {
+            "objective": "Call business leaders and tell them to pressure the government.",
+            "mechanisms": [
+              {
+                "id": "m1",
+                "kind": "PUBLIC_COMMUNICATION",
+                "objective": "Have business leaders pressure the government.",
+                "targetIds": [],
+                "actorIds": [
+                  "kennedy"
+                ],
+                "dependencies": [],
+                "assumptions": [],
+                "sequence": 1,
+                "durationTurns": 1,
+                "resourceClaims": [],
+                "specifiedDetail": "Call business leaders and tell them to pressure the government."
+              }
+            ],
+            "sequencing": [],
+            "contingencies": [],
+            "explicitRisks": [],
+            "unspecified": [
+              "Which business leaders should be contacted.",
+              "Which government or government actors should be pressured.",
+              "The channel and public or private nature of the communication.",
+              "The content of the requested pressure.",
+              "The timing and duration of the pressure.",
+              "The intended government action.",
+              "Resources required and expected effects.",
+              "Unresolved target reference “business_leaders” in mechanism m1.",
+              "Unresolved target reference “government” in mechanism m1."
+            ],
+            "communicationStyleIsMechanism": true
+          }
+        }
+      },
+      {
+        "name": "Hidden-state separation",
+        "passed": true,
+        "detail": "Player-visible pre-turn packets are identical."
+      },
+      {
+        "name": "Deterministic action",
+        "passed": true,
+        "detail": "A directly controlled, funded allocation committed without a roll.",
+        "evidence": {
+          "feasibility": [
+            {
+              "mechanismId": "m1",
+              "feasible": true,
+              "classification": "CERTAIN",
+              "controlMode": "DIRECT",
+              "capabilityEvidence": [
+                "Presidential command authority",
+                "ExComm",
+                "Naval quarantine",
+                "Explicit direct authority for kennedy"
+              ],
+              "reasons": [
+                "Within direct control if the stated resource exists and is available."
+              ],
+              "hardConstraints": [],
+              "availableFraction": 1
+            }
+          ],
+          "outcome": {
+            "id": "deterministic",
+            "label": "Executed as ordered",
+            "probability": 1,
+            "effectIds": [
+              "e_m1_recon_sorties"
+            ],
+            "description": "Hard feasibility established a deterministic result; no uncertainty draw was used."
+          }
+        }
+      },
+      {
+        "name": "Impossible action",
+        "passed": true,
+        "detail": "An unmechanized command outside player authority received no lottery chance.",
+        "evidence": {
+          "feasibility": [
+            {
+              "mechanismId": "m1",
+              "feasible": false,
+              "classification": "IMPOSSIBLE",
+              "controlMode": "NONE",
+              "capabilityEvidence": [
+                "Presidential command authority",
+                "ExComm",
+                "Naval quarantine"
+              ],
+              "reasons": [],
+              "hardConstraints": [
+                "The player lacks direct authority over at least one target. Interpret as a request or influence attempt."
+              ],
+              "availableFraction": 1
+            }
+          ],
+          "outcome": {
+            "id": "no_feasible_effect",
+            "label": "No feasible effect",
+            "probability": 1,
+            "effectIds": [],
+            "description": "No feasible player mechanism produced an authoritative effect."
+          }
+        }
+      },
+      {
+        "name": "Turn routing",
+        "passed": true,
+        "detail": "Critical cases were not under-routed and a narrow deterministic allocation stayed routine.",
+        "evidence": [
+          {
+            "expected": "ROUTINE",
+            "directive": "Allocate 1 reconnaissance sortie.",
+            "actual": "ROUTINE"
+          },
+          {
+            "expected": "DEEP",
+            "directive": "Launch nuclear weapons.",
+            "actual": "DEEP"
+          },
+          {
+            "expected": "DEEP",
+            "directive": "Use an unprecedented institutional mechanism no one has tried.",
+            "actual": "DEEP"
+          }
+        ]
+      },
+      {
+        "name": "Substance over eloquence",
+        "passed": true,
+        "detail": "Causal engagement score: substantive 9, hollow 0.",
+        "evidence": {
+          "substantive": [
+            {
+              "mechanismId": "m1",
+              "engagement": "ENGAGES",
+              "reason": "No hard constraint prevents attempted execution.",
+              "confidence": "MEDIUM"
+            },
+            {
+              "mechanismId": "m2",
+              "engagement": "ENGAGES",
+              "reason": "No hard constraint prevents attempted execution.",
+              "confidence": "MEDIUM"
+            },
+            {
+              "mechanismId": "m3",
+              "engagement": "ENGAGES",
+              "reason": "No hard constraint prevents attempted execution.",
+              "confidence": "MEDIUM"
+            }
+          ],
+          "hollow": [
+            {
+              "mechanismId": "m1",
+              "engagement": "DOES_NOT_ENGAGE",
+              "reason": "The player lacks direct authority over at least one target. Interpret as a request or influence attempt.",
+              "confidence": "MEDIUM"
+            }
+          ]
+        }
+      },
+      {
+        "name": "Capability integrity",
+        "passed": true,
+        "detail": "All actor actions used declared capabilities."
+      },
+      {
+        "name": "Calibration consistency",
+        "passed": true,
+        "detail": "Repeated identical state produced distribution distance 0.000.",
+        "evidence": {
+          "impactA": [
+            "METRIC:diplomatic_space:MODERATE",
+            "METRIC:diplomatic_space:MODERATE",
+            "METRIC:domestic_support:MINOR",
+            "METRIC:nuclear_tension:MINOR",
+            "METRIC:nuclear_tension:MINOR"
+          ],
+          "impactB": [
+            "METRIC:diplomatic_space:MODERATE",
+            "METRIC:diplomatic_space:MODERATE",
+            "METRIC:domestic_support:MINOR",
+            "METRIC:nuclear_tension:MINOR",
+            "METRIC:nuclear_tension:MINOR"
+          ],
+          "distributionDistance": 0
+        }
+      },
+      {
+        "name": "Good plan / bad luck distinction",
+        "passed": true,
+        "detail": "The narrative clearly frames the outcome as a 'Setback' driven by external opposition and execution friction rather than any flaw in the diplomatic strategy itself. It explicitly states that mechanisms (backchannel contact, public pledge, private missile offer) were executed as intended, but leaves Khrushchev's acceptance, timing, and verification unresolved—consistent with the strategy's own unspecified elements and INFLUENCE-mode control. The advisor reactions and strategic consequences reinforce that the diplomatic channel opened successfully (mechanism engagement) while the broader outcome remains uncertain due to factors outside Kennedy's control (military pressure, submarine standoff, Khrushchev's unknown response). No claim is made that the prose or communication style itself earned success; the causal chain from mechanism to partial outcome is preserved. No hidden facts (e.g., Khrushchev's actual decision, submarine crew intentions) are leaked—everything stays within the bounds of announced uncertainty.",
+        "evidence": {
+          "seed": 1,
+          "selectedOutcome": {
+            "id": "setback",
+            "label": "Setback",
+            "probability": 0.2,
+            "effectIds": [
+              "e_m1_nuclear_tension",
+              "e_m3_diplomatic_space"
+            ],
+            "description": "Opposition and execution friction blunt the strategy."
+          },
+          "grade": {
+            "passed": true,
+            "score": 0.9,
+            "rationale": "The narrative clearly frames the outcome as a 'Setback' driven by external opposition and execution friction rather than any flaw in the diplomatic strategy itself. It explicitly states that mechanisms (backchannel contact, public pledge, private missile offer) were executed as intended, but leaves Khrushchev's acceptance, timing, and verification unresolved—consistent with the strategy's own unspecified elements and INFLUENCE-mode control. The advisor reactions and strategic consequences reinforce that the diplomatic channel opened successfully (mechanism engagement) while the broader outcome remains uncertain due to factors outside Kennedy's control (military pressure, submarine standoff, Khrushchev's unknown response). No claim is made that the prose or communication style itself earned success; the causal chain from mechanism to partial outcome is preserved. No hidden facts (e.g., Khrushchev's actual decision, submarine crew intentions) are leaked—everything stays within the bounds of announced uncertainty.",
+            "hiddenLeak": false,
+            "distinguishesStrategyFromOutcome": true
+          }
+        }
+      },
+      {
+        "name": "State integrity",
+        "passed": true,
+        "detail": "Both live turns committed valid authoritative state."
+      },
+      {
+        "name": "Concise storytelling",
+        "passed": true,
+        "detail": "All narrative sections remained under 150 words."
+      },
+      {
+        "name": "Narrative hidden-information safety",
+        "passed": true,
+        "detail": "Both narratives avoid disclosing the forbidden facts. The submarine's armament is explicitly described as 'uncertain' rather than confirming the nuclear torpedo. No mention of tactical nuclear weapons in Cuba beyond generic 'Soviet forces' language already visible in the entity directory. Khrushchev's private preference is not revealed; the text explicitly states uncertainty about whether he 'received, accepted, or will answer' the proposal, and his true internal stance is never disclosed. Numeric changes in the second narrative (submarine 72→75, air-strike 62→63, diplomatic 45→46) align with the visible packet's arc progress values (75, 63, 46), showing consistency without introducing unsupported mechanical consequences. No new mechanical effects are asserted beyond the committed visible metrics.",
+        "evidence": {
+          "passed": true,
+          "score": 0.95,
+          "rationale": "Both narratives avoid disclosing the forbidden facts. The submarine's armament is explicitly described as 'uncertain' rather than confirming the nuclear torpedo. No mention of tactical nuclear weapons in Cuba beyond generic 'Soviet forces' language already visible in the entity directory. Khrushchev's private preference is not revealed; the text explicitly states uncertainty about whether he 'received, accepted, or will answer' the proposal, and his true internal stance is never disclosed. Numeric changes in the second narrative (submarine 72→75, air-strike 62→63, diplomatic 45→46) align with the visible packet's arc progress values (75, 63, 46), showing consistency without introducing unsupported mechanical consequences. No new mechanical effects are asserted beyond the committed visible metrics.",
+          "hiddenLeak": false,
+          "distinguishesStrategyFromOutcome": true
+        }
+      },
+      {
+        "name": "AI-assisted custom scenario",
+        "passed": true,
+        "detail": "Targeted rerun passed with validated scenario blackwater_bay_harborlight_crisis."
+      }
+    ],
+    "usage": {
+      "requests": 28,
+      "inputTokens": 221891,
+      "outputTokens": 48001,
+      "costUsd": 2.2155778250000004
+    }
+  },
+  "custom": {
+    "generatedAt": "2026-08-14T09:11:36.958Z",
+    "passed": true,
+    "scenarioId": "blackwater_bay_harborlight_crisis",
+    "errors": [],
+    "usage": {
+      "requests": 2,
+      "inputTokens": 4762,
+      "outputTokens": 9158,
+      "costUsd": 0.06986235
+    },
+    "traces": [
+      {
+        "role": "scenario_researcher",
+        "model": "anthropic/claude-sonnet-5",
+        "schemaName": "ScenarioResearch",
+        "status": "SUCCEEDED"
+      },
+      {
+        "role": "scenario_architect",
+        "model": "openai/gpt-5.6-terra",
+        "schemaName": "ScenarioDraft",
+        "status": "SUCCEEDED"
+      }
+    ]
+  },
+  "tuningIterations": 8
+}

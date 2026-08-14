@@ -46,6 +46,14 @@ describe('explicit visibility classes', () => {
     expect(packet).not.toContain('One nuclear torpedo');
     expect(packet).not.toContain('nuclear-armed torpedo');
   });
+
+  it('permits complete player declassification only after game over', () => {
+    const campaign = createCubanCampaign();
+    expect(JSON.stringify(playerVisibleState(campaign.state, campaign.beliefs))).not.toContain('nuclear-armed torpedo');
+    campaign.state.gameOver = true;
+    expect(JSON.stringify(playerVisibleState(campaign.state, campaign.beliefs))).toContain('nuclear-armed torpedo');
+    expect(canAccess(visibility('POST_GAME_ONLY'), playerId, playerId, true)).toBe(true);
+  });
 });
 
 describe('scenario visibility validation', () => {

@@ -48,6 +48,16 @@ export const validateAdjudicationProposal = (
   const feasibilityById = new Map(feasibility.map((finding) => [finding.mechanismId, finding]));
   const actorMechanisms = new Set(actorActions.map((action) => `actor:${action.actorId}`));
   const effects = new Map(adjudication.recommendedEffects.map((effect) => [effect.id, effect]));
+  const authoritativeDependencies = new Set([
+    ...Object.keys(state.metrics),
+    ...Object.keys(state.resources),
+    ...Object.keys(state.entities),
+    ...Object.keys(state.relationships),
+    ...Object.keys(state.arcs),
+    ...Object.keys(state.facts),
+    ...Object.keys(state.pendingProcesses),
+    state.goal.id,
+  ]);
   const targetExists = (effect: Adjudication['recommendedEffects'][number]) => {
     if (effect.targetType === 'METRIC') return effect.targetId in state.metrics;
     if (effect.targetType === 'RESOURCE') return effect.targetId in state.resources;
@@ -65,6 +75,7 @@ export const validateAdjudicationProposal = (
     if (feasibilityById.get(effect.mechanismId)?.classification === 'IMPOSSIBLE') issues.push({ code: 'EFFECT_FROM_IMPOSSIBLE', severity: 'ERROR', message: `${effect.id} derives from an impossible mechanism.` });
     if (!targetExists(effect)) issues.push({ code: 'EFFECT_TARGET_UNKNOWN', severity: 'ERROR', message: `${effect.id} references unknown target ${effect.targetId}.` });
     if (!allowedFields[effect.targetType].has(effect.field)) issues.push({ code: 'EFFECT_FIELD_INVALID', severity: 'ERROR', message: `${effect.id} cannot change ${effect.targetType}.${effect.field}.` });
+    if (!effect.cause.trim()) issues.push({ code: 'EFFECT_CAUSE_MISSING', severity: 'ERROR', message: `${effect.id} has no causal explanation.` });
     if (effect.targetType === 'RELATIONSHIP' && effect.field === 'commitments' && typeof effect.setValue !== 'string') issues.push({ code: 'COMMITMENT_VALUE', severity: 'ERROR', message: `${effect.id} must provide a commitment string.` });
     const calibration = state.manifest.calibrationRules.filter((rule) =>
       (!rule.mechanismKind || rule.mechanismKind === mechanism?.kind)
@@ -80,7 +91,7 @@ export const validateAdjudicationProposal = (
       }
     }
     for (const dependency of effect.dependencies) {
-      if (!mechanisms.has(dependency) && !actorMechanisms.has(dependency) && !effects.has(dependency) && !(dependency in state.facts)) {
+      if (!mechanisms.has(dependency) && !actorMechanisms.has(dependency) && !effects.has(dependency) && !authoritativeDependencies.has(dependency)) {
         issues.push({ code: 'EFFECT_DEPENDENCY_UNKNOWN', severity: 'ERROR', message: `${effect.id} references unknown dependency ${dependency}.` });
       }
     }

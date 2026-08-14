@@ -93,6 +93,34 @@ const extractJson = (text: string) => {
   return JSON.parse(candidate);
 };
 
+type JsonSchemaNode = Record<string, unknown>;
+
+export const providerStrictJsonSchema = (schema: JsonSchemaNode): JsonSchemaNode => {
+  const visit = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(visit);
+    if (!value || typeof value !== 'object') return value;
+    const node = Object.fromEntries(Object.entries(value as JsonSchemaNode).map(([key, child]) => [key, visit(child)])) as JsonSchemaNode;
+    if (node.properties && typeof node.properties === 'object' && !Array.isArray(node.properties)) {
+      const properties = node.properties as Record<string, JsonSchemaNode>;
+      const originallyRequired = new Set(Array.isArray(node.required) ? node.required as string[] : []);
+      for (const [key, property] of Object.entries(properties)) {
+        if (!originallyRequired.has(key)) properties[key] = { anyOf: [property, { type: 'null' }] };
+      }
+      node.required = Object.keys(properties);
+    }
+    return node;
+  };
+  return visit(structuredClone(schema)) as JsonSchemaNode;
+};
+
+const stripNullObjectFields = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(stripNullObjectFields);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .filter(([, child]) => child !== null)
+    .map(([key, child]) => [key, stripNullObjectFields(child)]));
+};
+
 export class OpenRouterGateway implements ModelGateway {
   readonly budget: ModelBudget;
   private readonly responseCache = new Map<string, Promise<ModelCallResult<unknown>>>();
@@ -168,13 +196,16 @@ export class OpenRouterGateway implements ModelGateway {
             json_schema: {
               name: name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64),
               strict: true,
-              schema: z.toJSONSchema(schema),
+              schema: providerStrictJsonSchema(z.toJSONSchema(schema) as JsonSchemaNode),
             },
           },
           usage: { include: true },
         }),
       });
-      if (!response.ok) throw new Error(`OpenRouter request failed: ${response.status} ${response.statusText}`);
+      if (!response.ok) {
+        const detail = (await response.text()).slice(0, 1600);
+        throw new Error(`OpenRouter request failed for ${role}/${route.model}/${name}: ${response.status} ${response.statusText}${detail ? ` — ${detail}` : ''}`);
+      }
       const payload = await response.json() as {
         choices?: Array<{ message?: { content?: string } }>;
         usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
@@ -185,7 +216,7 @@ export class OpenRouterGateway implements ModelGateway {
       const costUsd = payload.usage?.cost ?? 0;
       this.budget.record(inputTokens, outputTokens, costUsd);
       try {
-        const value = schema.parse(extractJson(rawText));
+        const value = schema.parse(stripNullObjectFields(extractJson(rawText)));
         return { value, model: route.model, usage: { inputTokens, outputTokens, costUsd }, rawText };
       } catch (error) {
         lastError = error;

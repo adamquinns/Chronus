@@ -66,7 +66,15 @@ export const playerVisibleState = (state: WorldState, beliefs: BeliefState) => {
         };
       }),
     resources: Object.values(state.resources)
-      .filter((resource) => maySee(state, playerId, resource.visibility)),
+      .filter((resource) => maySee(state, playerId, resource.visibility))
+      .map((resource) => ({ ...resource, ownerName: state.entities[resource.ownerId]?.name ?? resource.ownerId })),
+    relationships: Object.values(state.relationships)
+      .filter((relationship) => maySee(state, playerId, relationship.visibility))
+      .map((relationship) => ({
+        ...relationship,
+        fromName: state.entities[relationship.fromId]?.name ?? relationship.fromId,
+        toName: state.entities[relationship.toId]?.name ?? relationship.toId,
+      })),
     entityDirectory: entityDirectory(state, playerId),
     knownFacts: visibleFactIds(state, playerId).map((id) => state.facts[id]),
     beliefs: Object.values(beliefs.player.beliefs),
@@ -74,6 +82,9 @@ export const playerVisibleState = (state: WorldState, beliefs: BeliefState) => {
     arcs: Object.values(state.arcs)
       .filter((arc) => arc.status === 'ACTIVE' && maySee(state, playerId, arc.visibility))
       .map(({ onResolve: _onResolve, ...arc }) => arc),
+    processes: Object.values(state.pendingProcesses)
+      .filter((process) => !process.completed && maySee(state, playerId, process.visibility))
+      .map(({ onMature: _onMature, perTurnEffects: _perTurnEffects, detectableBy: _detectableBy, ...process }) => process),
   };
 };
 

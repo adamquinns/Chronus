@@ -4,6 +4,8 @@ import { Adjudication, ModelCallResult, StrategyGraph, TurnNarrative } from '../
 import { DEFAULT_MODEL_ROUTES, ModelBudget, ModelGateway, ModelMessage, ModelRole } from '../model';
 import { reconcileAdjudications, runTurn } from '../pipeline';
 import { createCoalitionCampaign } from '../curatedScenarios';
+import { checkFeasibility } from '../compiler';
+import { validateAdjudicationProposal } from '../validation';
 
 const graph: StrategyGraph = {
   objective: 'Contact Governor Vale privately',
@@ -45,6 +47,12 @@ class RecoveryGateway implements ModelGateway {
 }
 
 describe('bounded validation recovery and disagreement', () => {
+  it('accepts dependencies that reference existing authoritative world objects', () => {
+    const campaign = createCoalitionCampaign(199);
+    const proposal = adjudication();
+    proposal.recommendedEffects[0].dependencies = ['organizer_vale'];
+    expect(validateAdjudicationProposal(proposal, graph, checkFeasibility(graph, campaign.state), campaign.state)).toEqual([]);
+  });
   it('repairs once and commits only the validated proposal', async () => {
     const result = await runTurn(createCoalitionCampaign(200), graph.objective, { gateway: new RecoveryGateway(1), persist: false });
     expect(result.audit.validation.some((issue) => issue.code === 'RECOVERED_EFFECT_TARGET_UNKNOWN')).toBe(true);
