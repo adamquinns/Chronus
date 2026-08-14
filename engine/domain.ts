@@ -54,6 +54,13 @@ export interface TimeScale {
   unit: TimeUnit;
 }
 
+export interface TimeScaleRule {
+  id: Id;
+  condition: GoalCondition;
+  scale: TimeScale;
+  rationale: string;
+}
+
 export interface ScenarioCalibrationRule {
   id: Id;
   mechanismKind?: StrategyMechanism['kind'];
@@ -201,6 +208,8 @@ export interface PendingProcess {
   progress: number;
   requiredProgress: number;
   onMature: ProposedEffect[];
+  perTurnEffects: ProposedEffect[];
+  participantIds: Id[];
   detectableBy: Id[];
   visibility: VisibilityRule;
   completed: boolean;
@@ -215,6 +224,7 @@ export interface ScenarioManifest {
   startingDate: string;
   timeUnit: TimeUnit;
   timeScale: TimeScale;
+  timeScaleRules: TimeScaleRule[];
   metricDefinitions: MetricDefinition[];
   historicalCutoff: string;
   authorityRules: AuthorityRule[];
@@ -415,6 +425,22 @@ export interface RedTeamFinding {
   affectedMechanismIds: Id[];
 }
 
+export interface CounterfactualBranch {
+  id: Id;
+  premise: string;
+  source: 'ACTOR_RESPONSE' | 'DETECTION' | 'ASSUMPTION_FAILURE' | 'THIRD_PARTY' | 'BASE_CASE';
+  affectedMechanismIds: Id[];
+  robustnessConcern: string;
+}
+
+export interface ModelDisagreement {
+  compared: boolean;
+  material: boolean;
+  severityScore: number;
+  differences: string[];
+  response: 'NONE' | 'LOWER_CONFIDENCE' | 'BROADEN_DISTRIBUTION';
+}
+
 export interface StateChange {
   id: Id;
   targetType: ProposedEffect['targetType'];
@@ -467,6 +493,8 @@ export interface TurnAudit {
   feasibility: FeasibilityFinding[];
   actorActions: ActorAction[];
   redTeam: RedTeamFinding[];
+  counterfactualBranches: CounterfactualBranch[];
+  disagreement: ModelDisagreement;
   precedents: CausalPrecedent[];
   adjudication: Adjudication;
   selectedOutcome: OutcomeBand;

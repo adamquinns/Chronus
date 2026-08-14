@@ -191,7 +191,14 @@ export const commitEffects = (
       }
     } else if (effect.targetType === 'RELATIONSHIP') {
       const relationship = state.relationships[effect.targetId];
-      if (!relationship || !['alignment', 'trust', 'leverage'].includes(effect.field)) continue;
+      if (!relationship) continue;
+      if (effect.field === 'commitments' && typeof (effect as ProposedEffect).setValue === 'string') {
+        const before = [...relationship.commitments];
+        if (!relationship.commitments.includes((effect as ProposedEffect).setValue as string)) relationship.commitments.push((effect as ProposedEffect).setValue as string);
+        record(effect, before, [...relationship.commitments]);
+        continue;
+      }
+      if (!['alignment', 'trust', 'leverage'].includes(effect.field)) continue;
       const field = effect.field as 'alignment' | 'trust' | 'leverage';
       const before = relationship[field];
       const result = applyNumeric(before, effect, state, effect.targetId);
@@ -271,6 +278,11 @@ export const commitEffects = (
 export const evolvePendingProcesses = (state: WorldState): ProposedEffect[] => {
   const effects: ProposedEffect[] = [];
   for (const process of Object.values(state.pendingProcesses)) {
+    if (!process.completed) effects.push(...process.perTurnEffects.map((effect) => ({
+      ...effect,
+      id: `${effect.id}_turn_${state.turn + 1}`,
+      cause: `${effect.cause} (${process.label}, turn ${state.turn + 1}).`,
+    })));
     if (!process.completed && (process.dueTurn <= state.turn + 1 || process.progress >= process.requiredProgress)) {
       effects.push(...process.onMature);
       effects.push({

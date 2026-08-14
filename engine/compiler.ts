@@ -31,7 +31,7 @@ const inferKind = (text: string): StrategyMechanism['kind'] => {
   if (/secret|quiet|conceal|mislead|deceiv|feint/i.test(text)) return 'DECEPTION';
   if (/intelligence|recon|surveil|investigat|spy|verify/i.test(text)) return 'INTELLIGENCE';
   if (/court|legal|injunction|lawsuit|treaty/i.test(text)) return 'LEGAL_ACTION';
-  if (/speech|announce|public|broadcast|press/i.test(text)) return 'PUBLIC_COMMUNICATION';
+  if (/speech|announce|public|broadcast|\bpress\b/i.test(text)) return 'PUBLIC_COMMUNICATION';
   if (/coalition|allies|governor|organize|recruit/i.test(text)) return 'COALITION_BUILDING';
   if (/sanction|economic|business|insurance|trade|financial/i.test(text)) return 'ECONOMIC_PRESSURE';
   if (/threat|ultimatum|coerce|pressure/i.test(text)) return 'COERCION';
@@ -51,10 +51,14 @@ const resourceClaims = (text: string, state: WorldState) => {
   const amount = Number(text.match(/\b(\d+(?:\.\d+)?)\b/)?.[1]);
   if (!Number.isFinite(amount) || amount <= 0) return [];
   const lower = text.toLowerCase();
+  const singular = (value: string) => value.replace(/s\b/g, '');
   const resource = Object.values(state.resources).find((candidate) =>
     lower.includes(candidate.id.replaceAll('_', ' '))
     || lower.includes(candidate.label.toLowerCase())
-    || lower.includes(candidate.unit.toLowerCase()),
+    || lower.includes(candidate.unit.toLowerCase())
+    || singular(lower).includes(singular(candidate.id.replaceAll('_', ' ')))
+    || singular(lower).includes(singular(candidate.label.toLowerCase()))
+    || singular(lower).includes(singular(candidate.unit.toLowerCase())),
   );
   return resource ? [{ resourceId: resource.id, amount }] : [];
 };
@@ -152,6 +156,10 @@ export const classifyTurn = (graph: StrategyGraph, state: WorldState): { depth: 
   const concealedForce = kinds.has('MILITARY_OPERATION') && kinds.has('DECEPTION');
   const highStakes = dangerousMetric || state.goal.deadlineTurn - state.turn <= 2 || pivotalLanguage;
   const novel = graph.mechanisms.some((item) => item.kind === 'OTHER' || item.assumptions.length > 2);
+  const narrowDeterministic = graph.mechanisms.length === 1
+    && graph.mechanisms[0].kind === 'RESOURCE_TRANSFER'
+    && graph.mechanisms[0].resourceClaims.length > 0;
+  if (narrowDeterministic) return { depth: 'ROUTINE', reasons: ['A single fully specified resource allocation is mechanically resolvable.'] };
   if (highStakes || novel || graph.mechanisms.length >= 6) return {
     depth: 'DEEP',
     reasons: [
@@ -204,9 +212,26 @@ export const checkFeasibility = (graph: StrategyGraph, state: WorldState): Feasi
     const capabilityEvidence = capabilityPattern
       ? capableEntities.flatMap((entity) => entity.capabilities.filter((capability) => capabilityPattern.test(capability)))
       : capableEntities.flatMap((entity) => entity.capabilities).slice(0, 3);
+    const specificCapabilityChecks: Array<[RegExp, RegExp]> = [
+      [/carrier|air wing/i, /carrier|air wing/i],
+      [/nuclear|atomic/i, /nuclear|atomic|strategic force/i],
+      [/submarine/i, /submarine/i],
+      [/satellite/i, /satellite|space/i],
+      [/cyber/i, /cyber|computer/i],
+      [/artillery/i, /artillery/i],
+      [/engineer/i, /engineer/i],
+    ];
+    const missingSpecific = specificCapabilityChecks.find(([requested, evidence]) =>
+      requested.test(mechanism.objective)
+      && !capableEntities.some((entity) => entity.capabilities.some((capability) => evidence.test(capability))));
     if (capabilityPattern && capabilityEvidence.length === 0) {
       feasible = false;
       constraints.push(`No controlled entity has a declared capability supporting ${mechanism.kind}.`);
+      availableFraction = 0;
+    }
+    if (missingSpecific) {
+      feasible = false;
+      constraints.push('The directive requires a specific capability absent from every controlled entity.');
       availableFraction = 0;
     }
     for (const claim of mechanism.resourceClaims) {

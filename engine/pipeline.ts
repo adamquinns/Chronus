@@ -4,6 +4,7 @@ import {
   CompilerFidelity,
   EffectRecommendation,
   RedTeamFinding,
+  ModelDisagreement,
   TurnAudit,
   TurnProgress,
   TurnPreview,
@@ -24,6 +25,7 @@ import { advanceScenarioTime } from './time';
 import { buildAccessDecisionMatrix, projectChangesForViewer, visibility } from './visibility';
 import { validateActorActions, validateAdjudicationProposal } from './validation';
 import { snapshotHash } from './audit';
+import { buildCounterfactualBranches } from './branching';
 
 export interface RunTurnOptions {
   gateway?: ModelGateway;
@@ -46,24 +48,39 @@ const usageDelta = (before: ReturnType<ModelGateway['budget']['snapshot']>, afte
   costUsd: after.costUsd - before.costUsd,
 });
 
-const reconcile = (primary: Adjudication, second: Adjudication): { adjudication: Adjudication; finding?: RedTeamFinding } => {
+export const reconcileAdjudications = (primary: Adjudication, second: Adjudication): { adjudication: Adjudication; finding?: RedTeamFinding; disagreement: ModelDisagreement } => {
   const primarySevere = primary.recommendedEffects.filter((effect) => effect.impactClass === 'SEVERE' || effect.impactClass === 'SYSTEMIC').length;
   const secondSevere = second.recommendedEffects.filter((effect) => effect.impactClass === 'SEVERE' || effect.impactClass === 'SYSTEMIC').length;
   const primaryNegative = primary.recommendedEffects.filter((effect) => effect.direction === 'NEGATIVE').length;
   const secondNegative = second.recommendedEffects.filter((effect) => effect.direction === 'NEGATIVE').length;
-  const disagreement = Math.abs(primarySevere - secondSevere) + Math.abs(primaryNegative - secondNegative);
-  if (disagreement < 3) return { adjudication: primary };
+  const primaryEngagement = new Map(primary.mechanismFindings.map((finding) => [finding.mechanismId, finding.engagement]));
+  const engagementOrder = { BACKFIRES: -2, DOES_NOT_ENGAGE: 0, ENGAGES_WEAKLY: 1, ENGAGES: 2, ENGAGES_STRONGLY: 3 } as const;
+  const engagementDistance = second.mechanismFindings.reduce((sum, finding) => {
+    const prior = primaryEngagement.get(finding.mechanismId);
+    return sum + (prior ? Math.abs(engagementOrder[prior] - engagementOrder[finding.engagement]) : 1);
+  }, 0);
+  const severityScore = Math.abs(primarySevere - secondSevere) + Math.abs(primaryNegative - secondNegative) + engagementDistance;
+  if (severityScore < 3) return { adjudication: primary, disagreement: { compared: true, material: false, severityScore, differences: [], response: 'NONE' } };
+  const broadened = normalizeDistribution(primary.outcomeBands.map((band) => ({
+    ...band,
+    probability: band.probability * 0.7 + (1 / Math.max(1, primary.outcomeBands.length)) * 0.3,
+  })));
   return {
     adjudication: {
       ...primary,
       confidence: 'LOW',
-      outcomeBands: normalizeDistribution(primary.outcomeBands.map((band) => ({ ...band, probability: band.probability + 0.04 }))),
+      outcomeBands: broadened,
       unknowns: [...primary.unknowns, 'Independent adjudicators materially disagreed; confidence was reduced.'],
     },
     finding: {
       category: 'OTHER', severity: 'WARNING',
       claim: 'Independent causal judgments materially disagreed.',
       evidence: [primary.summary, second.summary], affectedMechanismIds: primary.mechanismFindings.map((item) => item.mechanismId),
+    },
+    disagreement: {
+      compared: true, material: true, severityScore,
+      differences: [`Severe/systemic effect count ${primarySevere} vs ${secondSevere}.`, `Negative effect count ${primaryNegative} vs ${secondNegative}.`, `Engagement-distance score ${engagementDistance}.`],
+      response: 'BROADEN_DISTRIBUTION',
     },
   };
 };
@@ -75,6 +92,7 @@ const getSecondOpinion = async (
   actorActions: TurnAudit['actorActions'],
   redTeam: TurnAudit['redTeam'],
   precedents: TurnAudit['precedents'],
+  counterfactualBranches: TurnAudit['counterfactualBranches'],
   gateway: ModelGateway,
 ) => {
   const result = await gateway.callJson('deep_second_opinion', [
@@ -84,7 +102,7 @@ const getSecondOpinion = async (
     },
     {
       role: 'user',
-      content: JSON.stringify({ dryStrategy: graph, feasibility, actorActions, redTeam, causalPrecedents: precedents, historicalPriorWeight: historicalPriorWeight(campaign.state), authoritativeState: authoritativeSnapshot(campaign.state) }),
+      content: JSON.stringify({ dryStrategy: graph, feasibility, actorActions, redTeam, causalPrecedents: precedents, robustnessBranches: counterfactualBranches, historicalPriorWeight: historicalPriorWeight(campaign.state), authoritativeState: authoritativeSnapshot(campaign.state) }),
     },
   ], adjudicationSchema, 'IndependentAdjudication');
   return result.value;
@@ -98,6 +116,7 @@ const repairAdjudication = async (
   actorActions: TurnAudit['actorActions'],
   redTeam: TurnAudit['redTeam'],
   precedents: TurnAudit['precedents'],
+  counterfactualBranches: TurnAudit['counterfactualBranches'],
   prior: Adjudication,
   failures: ValidationIssue[],
   gateway: ModelGateway,
@@ -115,6 +134,7 @@ const repairAdjudication = async (
         actorActions,
         redTeam,
         causalPrecedents: precedents,
+        robustnessBranches: counterfactualBranches,
         authoritativeState: authoritativeSnapshot(campaign.state),
         priorAdjudication: prior,
         validationFailures: failures,
@@ -186,6 +206,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
       runRedTeam(dryStrategy, feasibility, [], campaign.state, precedents, options.gateway),
     ]);
   const actorActions = actorSimulation.actions;
+  const counterfactualBranches = depth === 'DEEP' ? buildCounterfactualBranches(dryStrategy, actorActions, redTeam, campaign.state) : [];
   const actorValidation = validateActorActions(actorActions, campaign.state, dryStrategy);
   const invalidActorActions = actorValidation.filter((issue) => issue.severity === 'ERROR');
   if (invalidActorActions.length) throw new Error(`Actor simulation rejected: ${invalidActorActions[0].message}`);
@@ -193,7 +214,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
   progress(options, 'RED_TEAM', 'Strategic assumptions challenged', 'Dependencies, capabilities, and second-order risks were reviewed.', 'COMPLETED');
 
   progress(options, 'ADJUDICATE', 'Adjudicating causal effects', 'Converting constrained judgments into bounded effect recommendations.');
-  const primaryPromise = adjudicate(dryStrategy, feasibility, actorActions, redTeam, campaign.state, depth, precedents, options.gateway);
+  const primaryPromise = adjudicate(dryStrategy, feasibility, actorActions, redTeam, campaign.state, depth, precedents, counterfactualBranches, options.gateway);
   const needsSecondOpinion = depth === 'DEEP' && Boolean(options.gateway) && (
     dryStrategy.mechanisms.some((mechanism) => mechanism.kind === 'OTHER')
     || dryStrategy.mechanisms.length >= 5
@@ -201,7 +222,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     || campaign.state.metrics.nuclear_tension >= 95
   );
   const secondPromise = needsSecondOpinion && options.gateway
-    ? getSecondOpinion(campaign, dryStrategy, feasibility, actorActions, redTeam, precedents, options.gateway)
+    ? getSecondOpinion(campaign, dryStrategy, feasibility, actorActions, redTeam, precedents, counterfactualBranches, options.gateway)
     : undefined;
   let rawAdjudication: Adjudication;
   const recoveredValidation: ValidationIssue[] = [];
@@ -221,7 +242,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     const originalFailures = proposalFailures.length ? proposalFailures : recoveredValidation;
     try {
       rawAdjudication = await repairAdjudication(
-        'validator', campaign, dryStrategy, feasibility, actorActions, redTeam, precedents,
+        'validator', campaign, dryStrategy, feasibility, actorActions, redTeam, precedents, counterfactualBranches,
         rawAdjudication, originalFailures, options.gateway,
       );
       proposalFailures = validateAdjudicationProposal(rawAdjudication, dryStrategy, feasibility, campaign.state, actorActions)
@@ -233,7 +254,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     if (proposalFailures.length) {
       try {
         rawAdjudication = await repairAdjudication(
-          'deep_second_opinion', campaign, dryStrategy, feasibility, actorActions, redTeam, precedents,
+          'deep_second_opinion', campaign, dryStrategy, feasibility, actorActions, redTeam, precedents, counterfactualBranches,
           rawAdjudication, proposalFailures, options.gateway,
         );
         const escalatedFailures = validateAdjudicationProposal(rawAdjudication, dryStrategy, feasibility, campaign.state, actorActions)
@@ -248,11 +269,13 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
   }
   if (proposalFailures.length) throw new Error(`Adjudication rejected: ${proposalFailures[0].message}`);
   let adjudication = sanitizeAdjudication(rawAdjudication, campaign.state, depth, feasibility, actorActions);
+  let disagreement: ModelDisagreement = { compared: false, material: false, severityScore: 0, differences: [], response: 'NONE' };
   if (needsSecondOpinion && options.gateway) {
     try {
       const second = sanitizeAdjudication(await secondPromise!, campaign.state, depth, feasibility, actorActions);
-      const reconciled = reconcile(adjudication, second);
+      const reconciled = reconcileAdjudications(adjudication, second);
       adjudication = reconciled.adjudication;
+      disagreement = reconciled.disagreement;
       if (reconciled.finding) redTeam.push(reconciled.finding);
     } catch (error) {
       redTeam.push({
@@ -321,6 +344,8 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
           progress: 0,
           requiredProgress: 100,
           onMature: effects,
+          perTurnEffects: [],
+          participantIds: [...new Set([campaign.state.manifest.playerId, ...mechanism.targetIds])],
           detectableBy: [campaign.state.manifest.playerId],
           visibility: visibility('PLAYER_KNOWN', [campaign.state.manifest.playerId]),
           completed: false,
@@ -388,6 +413,8 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     feasibility,
     actorActions,
     redTeam,
+    counterfactualBranches,
+    disagreement,
     precedents,
     adjudication,
     selectedOutcome,

@@ -42,6 +42,7 @@ const draft = (): ScenarioDraft => ({
   historicalAnalogs: [],
   advisors: [{ id: 'legal_advisor', name: 'Legal Advisor', expertise: ['Public law'], worldview: 'Preserve procedural options.', bias: 'Overweights litigation.', relationship: 60 }],
   unresolvedUncertainties: ['Whether the pivotal governor will accept political risk.'],
+  beliefOverrides: [{ actorId: 'organizer', subjectId: 'governor', field: 'resolve', range: [35, 70], confidence: 'LOW', sourceFactIds: [] }],
 });
 
 describe('scenario authoring and initialization', () => {
@@ -50,6 +51,7 @@ describe('scenario authoring and initialization', () => {
     expect(campaign.state.schemaVersion).toBe(2);
     expect(campaign.state.manifest.playerId).toBe('organizer');
     expect(campaign.state.manifest.authorityRules.some((rule) => rule.targetId === 'governor' && rule.mode === 'INFLUENCE')).toBe(true);
+    expect(campaign.beliefs.player.beliefs['governor.resolve'].range).toEqual([35, 70]);
     expect(validateScenario(campaign).filter((issue) => issue.severity === 'ERROR')).toEqual([]);
   });
 

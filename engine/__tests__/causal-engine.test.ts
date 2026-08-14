@@ -5,6 +5,9 @@ import { createCubanCampaign } from '../scenarios';
 import { commitEffects, validateWorld } from '../state';
 import { drawSeeded, selectWeighted } from '../rng';
 import { ProposedEffect, StrategyGraph } from '../domain';
+import { advanceScenarioTime } from '../time';
+import { createMilitaryCampaign } from '../curatedScenarios';
+import { evolvePendingProcesses } from '../state';
 
 describe('seeded uncertainty', () => {
   it('replays identical draws and weighted selections', () => {
@@ -13,6 +16,21 @@ describe('seeded uncertainty', () => {
     expect(first).toEqual(second);
     const bands = [{ probability: 0.2, id: 'a' }, { probability: 0.8, id: 'b' }];
     expect(selectWeighted(bands, first.value)).toEqual(selectWeighted(bands, second.value));
+  });
+});
+
+describe('scenario time and ongoing processes', () => {
+  it('compresses the time scale when a scenario crisis rule activates', () => {
+    const campaign = createCubanCampaign();
+    campaign.state.metrics.nuclear_tension = 90;
+    const next = advanceScenarioTime(campaign.state);
+    expect(next.elapsedMinutes).toBe(60);
+  });
+
+  it('applies authored process costs until the process matures', () => {
+    const campaign = createMilitaryCampaign(22);
+    const effects = evolvePendingProcesses(campaign.state);
+    expect(effects.some((effect) => effect.targetId === 'fuel' && effect.proposedDelta === -1)).toBe(true);
   });
 });
 

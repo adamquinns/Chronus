@@ -5,6 +5,7 @@ import {
   Campaign,
   ActorSimulationAudit,
   CausalPrecedent,
+  CounterfactualBranch,
   EffectRecommendation,
   FeasibilityFinding,
   RedTeamFinding,
@@ -165,17 +166,32 @@ export const fallbackAdjudication = (
   state: WorldState,
 ): Adjudication => {
   const effects: EffectRecommendation[] = [];
+  const firstMetric = (...ids: string[]) => ids.find((id) => id in state.metrics);
+  const pushMetric = (
+    mechanismId: string,
+    targetId: string | undefined,
+    direction: EffectRecommendation['direction'],
+    impactClass: EffectRecommendation['impactClass'],
+    cause: string,
+  ) => {
+    if (targetId) effects.push(effect(`e_${mechanismId}_${targetId}`, mechanismId, targetId, direction, impactClass, cause));
+  };
   for (const mechanism of graph.mechanisms) {
     const check = feasibility.find((item) => item.mechanismId === mechanism.id);
     if (check?.classification === 'IMPOSSIBLE') continue;
     if (mechanism.kind === 'DIPLOMACY') {
-      effects.push(effect(`e_${mechanism.id}_space`, mechanism.id, 'diplomatic_space', 'POSITIVE', 'MODERATE', 'A viable diplomatic mechanism preserves negotiating room.'));
-      effects.push(effect(`e_${mechanism.id}_tension`, mechanism.id, 'nuclear_tension', 'NEGATIVE', 'MINOR', 'Direct communication reduces miscalculation pressure.'));
+      pushMetric(mechanism.id, firstMetric('diplomatic_space', 'coalition_cohesion', 'public_support'), 'POSITIVE', 'MODERATE', 'A viable diplomatic mechanism preserves negotiating room.');
+      pushMetric(mechanism.id, firstMetric('nuclear_tension', 'enemy_pressure', 'federal_momentum'), 'NEGATIVE', 'MINOR', 'Direct communication reduces adversarial pressure and miscalculation.');
     } else if (mechanism.kind === 'MILITARY_OPERATION' || mechanism.kind === 'COERCION') {
-      effects.push(effect(`e_${mechanism.id}_tension`, mechanism.id, 'nuclear_tension', 'POSITIVE', 'MAJOR', 'Military pressure increases escalation and misperception risk.'));
-      effects.push(effect(`e_${mechanism.id}_support`, mechanism.id, 'domestic_support', 'POSITIVE', 'MINOR', 'A forceful response temporarily reassures domestic hawks.'));
+      if ('nuclear_tension' in state.metrics) {
+        pushMetric(mechanism.id, 'nuclear_tension', 'POSITIVE', 'MAJOR', 'Military pressure increases escalation and misperception risk.');
+        pushMetric(mechanism.id, firstMetric('domestic_support', 'public_support'), 'POSITIVE', 'MINOR', 'A forceful response temporarily reassures supporters.');
+      } else {
+        pushMetric(mechanism.id, firstMetric('enemy_pressure', 'federal_momentum'), 'NEGATIVE', 'MODERATE', 'Available operational pressure contests the opponent’s current initiative.');
+        pushMetric(mechanism.id, firstMetric('combat_readiness', 'coalition_cohesion'), 'NEGATIVE', 'MINOR', 'Executing pressure consumes organizational readiness and cohesion.');
+      }
     } else if (mechanism.kind === 'INTELLIGENCE') {
-      effects.push(effect(`e_${mechanism.id}_intel`, mechanism.id, 'intelligence_quality', 'POSITIVE', 'MODERATE', 'Focused collection improves decision-relevant information.'));
+      pushMetric(mechanism.id, firstMetric('intelligence_quality'), 'POSITIVE', 'MODERATE', 'Focused collection improves decision-relevant information.');
       const discoverable = Object.values(state.facts).find((fact) =>
         fact.visibility.discoverable
         && !canAccess(fact.visibility, state.manifest.playerId, state.manifest.playerId, state.gameOver));
@@ -194,7 +210,15 @@ export const fallbackAdjudication = (
         actorId: state.manifest.playerId,
       });
     } else if (mechanism.kind === 'PUBLIC_COMMUNICATION') {
-      effects.push(effect(`e_${mechanism.id}_support`, mechanism.id, 'domestic_support', 'POSITIVE', 'MINOR', 'Clear public framing improves political support.'));
+      pushMetric(mechanism.id, firstMetric('domestic_support', 'public_support', 'coalition_cohesion'), 'POSITIVE', 'MINOR', 'Clear public framing improves political support.');
+    } else if (mechanism.kind === 'COALITION_BUILDING') {
+      pushMetric(mechanism.id, firstMetric('coalition_cohesion', 'alliance_cohesion', 'public_support'), 'POSITIVE', 'MINOR', 'Credible organizing strengthens coordination incrementally.');
+    } else if (mechanism.kind === 'LEGAL_ACTION') {
+      pushMetric(mechanism.id, firstMetric('legal_position', 'diplomatic_space', 'institutional_stability'), 'POSITIVE', 'MODERATE', 'Legal preparation strengthens the available institutional position.');
+    } else if (mechanism.kind === 'ECONOMIC_PRESSURE') {
+      pushMetric(mechanism.id, firstMetric('federal_momentum', 'enemy_pressure'), 'NEGATIVE', 'MINOR', 'Economic pressure creates bounded implementation friction.');
+    } else if (mechanism.kind === 'DECEPTION') {
+      pushMetric(mechanism.id, firstMetric('exposure_risk', 'enemy_pressure'), 'NEGATIVE', 'MINOR', 'Concealment temporarily reduces the opponent’s ability to counter the initiative.');
     } else if (mechanism.kind === 'RESOURCE_TRANSFER' && mechanism.resourceClaims.length) {
       for (const claim of mechanism.resourceClaims) effects.push({
         id: `e_${mechanism.id}_${claim.resourceId}`,
@@ -211,7 +235,7 @@ export const fallbackAdjudication = (
         proposedDelta: -claim.amount,
       });
     } else {
-      effects.push(effect(`e_${mechanism.id}_space`, mechanism.id, 'diplomatic_space', 'POSITIVE', 'TRIVIAL', 'The initiative creates limited strategic movement.'));
+      pushMetric(mechanism.id, Object.keys(state.metrics)[0], 'POSITIVE', 'TRIVIAL', 'The underspecified initiative creates only limited strategic movement.');
     }
   }
   const feasibleRatio = feasibility.filter((item) => item.feasible).length / Math.max(1, feasibility.length);
@@ -244,6 +268,7 @@ export const adjudicate = async (
   state: WorldState,
   depth: TurnDepth,
   precedents: CausalPrecedent[] = [],
+  counterfactualBranches: CounterfactualBranch[] = [],
   gateway?: ModelGateway,
 ): Promise<Adjudication> => {
   if (!gateway) return fallbackAdjudication(graph, feasibility, actorActions, state);
@@ -253,6 +278,7 @@ export const adjudicate = async (
     actorActions,
     redTeam,
     causalPrecedents: precedents,
+    robustnessBranches: counterfactualBranches,
     historicalPriorWeight: historicalPriorWeight(state),
     authoritativeState: authoritativeSnapshot(state),
     allowedImpactClasses: depth === 'DEEP'

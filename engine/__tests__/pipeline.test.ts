@@ -76,6 +76,8 @@ describe('complete deterministic turn pipeline', () => {
         id: 'mature_test_process', mechanismId: 'test_process', targetType: 'METRIC', targetId: 'diplomatic_space', field: 'value',
         direction: 'POSITIVE', impactClass: 'MINOR', confidence: 'HIGH', engagement: 'ENGAGES_STRONGLY', cause: 'The prepared initiative matured.', dependencies: [],
       }],
+      perTurnEffects: [],
+      participantIds: ['kennedy'],
       detectableBy: ['kennedy'],
       visibility: { classification: 'PLAYER_KNOWN', actorIds: ['kennedy'], discoverable: true, declassifyOnGameOver: true },
       completed: false,

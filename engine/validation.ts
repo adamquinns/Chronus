@@ -11,11 +11,11 @@ const allowedFields: Record<Adjudication['recommendedEffects'][number]['targetTy
   METRIC: new Set(['value']),
   RESOURCE: new Set(['amount']),
   ENTITY: new Set(['power', 'resolve', 'status']),
-  RELATIONSHIP: new Set(['alignment', 'trust', 'leverage']),
+  RELATIONSHIP: new Set(['alignment', 'trust', 'leverage', 'commitments']),
   ARC: new Set(['progress']),
   FACT: new Set(['statement', 'discover']),
   PROCESS: new Set(['progress', 'status']),
-  GOAL: new Set(['status']),
+  GOAL: new Set(),
 };
 
 export const validateActorActions = (
@@ -65,6 +65,7 @@ export const validateAdjudicationProposal = (
     if (feasibilityById.get(effect.mechanismId)?.classification === 'IMPOSSIBLE') issues.push({ code: 'EFFECT_FROM_IMPOSSIBLE', severity: 'ERROR', message: `${effect.id} derives from an impossible mechanism.` });
     if (!targetExists(effect)) issues.push({ code: 'EFFECT_TARGET_UNKNOWN', severity: 'ERROR', message: `${effect.id} references unknown target ${effect.targetId}.` });
     if (!allowedFields[effect.targetType].has(effect.field)) issues.push({ code: 'EFFECT_FIELD_INVALID', severity: 'ERROR', message: `${effect.id} cannot change ${effect.targetType}.${effect.field}.` });
+    if (effect.targetType === 'RELATIONSHIP' && effect.field === 'commitments' && typeof effect.setValue !== 'string') issues.push({ code: 'COMMITMENT_VALUE', severity: 'ERROR', message: `${effect.id} must provide a commitment string.` });
     const calibration = state.manifest.calibrationRules.filter((rule) =>
       (!rule.mechanismKind || rule.mechanismKind === mechanism?.kind)
       && (!rule.targetType || rule.targetType === effect.targetType)

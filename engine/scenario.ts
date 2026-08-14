@@ -71,6 +71,10 @@ export const validateScenario = (campaign: Campaign): ValidationIssue[] => {
   if (!state.entities[state.manifest.playerId]) issues.push({ code: 'PLAYER_ENTITY', severity: 'ERROR', message: 'Player role references a missing entity.', path: 'manifest.playerId' });
   if (!state.manifest.playerRole.trim()) issues.push({ code: 'PLAYER_ROLE', severity: 'ERROR', message: 'Player role is required.', path: 'manifest.playerRole' });
   if (!Number.isFinite(state.manifest.timeScale.amount) || state.manifest.timeScale.amount <= 0) issues.push({ code: 'TIME_SCALE', severity: 'ERROR', message: 'Time scale must be positive.', path: 'manifest.timeScale' });
+  for (const rule of state.manifest.timeScaleRules) {
+    if (!(rule.condition.targetId in state.metrics) || rule.condition.field !== 'value') issues.push({ code: 'TIME_SCALE_RULE', severity: 'ERROR', message: `Time scale rule ${rule.id} references an invalid metric condition.`, path: `manifest.timeScaleRules.${rule.id}` });
+    if (!Number.isFinite(rule.scale.amount) || rule.scale.amount <= 0) issues.push({ code: 'TIME_SCALE_RULE_AMOUNT', severity: 'ERROR', message: `Time scale rule ${rule.id} has invalid scale.`, path: `manifest.timeScaleRules.${rule.id}.scale` });
+  }
   if (Number.isNaN(Date.parse(state.currentDateTime))) issues.push({ code: 'CURRENT_TIME', severity: 'ERROR', message: 'Current scenario time is invalid.', path: 'state.currentDateTime' });
   if (state.goal.deadlineTurn <= state.turn) issues.push({ code: 'GOAL_DEADLINE', severity: 'WARNING', message: 'Starting objective deadline is not in the future.', path: 'state.goal.deadlineTurn' });
   if (!state.goal.victoryConditions.length || !state.goal.failureConditions.length) issues.push({ code: 'GOAL_CONDITIONS', severity: 'ERROR', message: 'Scenario must define victory and failure conditions.', path: 'state.goal' });
@@ -96,7 +100,12 @@ export const validateScenario = (campaign: Campaign): ValidationIssue[] => {
     issues.push(...visibilityIssue(state, fact.visibility, `facts.${fact.id}.visibility`));
     if (fact.provenance === 'VERIFIED_FACT' && !fact.sourceRefs.length) issues.push({ code: 'FACT_SOURCE', severity: 'ERROR', message: `${fact.id} is verified but has no source reference.`, path: `facts.${fact.id}.sourceRefs` });
   }
-  for (const process of Object.values(state.pendingProcesses)) issues.push(...visibilityIssue(state, process.visibility, `pendingProcesses.${process.id}.visibility`));
+  for (const process of Object.values(state.pendingProcesses)) {
+    issues.push(...visibilityIssue(state, process.visibility, `pendingProcesses.${process.id}.visibility`));
+    if (!state.entities[process.ownerId]) issues.push({ code: 'PROCESS_OWNER', severity: 'ERROR', message: `${process.label} has an invalid owner.`, path: `pendingProcesses.${process.id}.ownerId` });
+    for (const participantId of process.participantIds) if (!state.entities[participantId]) issues.push({ code: 'PROCESS_PARTICIPANT', severity: 'ERROR', message: `${process.label} has invalid participant ${participantId}.`, path: `pendingProcesses.${process.id}.participantIds` });
+    if (process.dueTurn <= state.turn) issues.push({ code: 'PROCESS_DUE', severity: 'WARNING', message: `${process.label} begins already due.`, path: `pendingProcesses.${process.id}.dueTurn` });
+  }
 
   for (const rule of state.manifest.authorityRules) {
     if (!state.entities[rule.actorId] || !state.entities[rule.targetId]) issues.push({ code: 'AUTHORITY_ENTITY', severity: 'ERROR', message: `Authority rule references an unknown actor or target.`, path: 'manifest.authorityRules' });
@@ -104,6 +113,9 @@ export const validateScenario = (campaign: Campaign): ValidationIssue[] => {
   }
   if (!state.manifest.authorityRules.some((rule) => rule.actorId === state.manifest.playerId && rule.targetId === state.manifest.playerId && rule.mode === 'DIRECT')) {
     issues.push({ code: 'PLAYER_AUTHORITY', severity: 'ERROR', message: 'Player has no coherent direct self-authority rule.', path: 'manifest.authorityRules' });
+  }
+  for (const entity of Object.values(state.entities).filter((candidate) => candidate.status !== 'DESTROYED')) {
+    if (!state.manifest.authorityRules.some((rule) => rule.actorId === entity.id && rule.targetId === entity.id)) issues.push({ code: 'ACTOR_AUTHORITY', severity: 'ERROR', message: `${entity.name} has no explicit self-authority scope.`, path: 'manifest.authorityRules' });
   }
   issues.push(...validateCalibration(state.manifest.calibrationRules));
   for (const analog of state.manifest.historicalAnalogs) {
@@ -113,12 +125,23 @@ export const validateScenario = (campaign: Campaign): ValidationIssue[] => {
 
   const holders = [beliefs.player, ...Object.values(beliefs.actors)];
   for (const holder of holders) {
+    if (!state.entities[holder.actorId]) issues.push({ code: 'BELIEF_HOLDER_UNKNOWN', severity: 'ERROR', message: `Belief holder ${holder.actorId} is not an entity.`, path: `beliefs.${holder.actorId}` });
     for (const factId of holder.knownFactIds) {
       const fact = state.facts[factId];
       if (!fact) {
         issues.push({ code: 'BELIEF_FACT_UNKNOWN', severity: 'ERROR', message: `${holder.actorId} references missing fact ${factId}.`, path: `beliefs.${holder.actorId}.knownFactIds` });
       } else if (!canAccess(fact.visibility, holder.actorId, state.manifest.playerId, state.gameOver)) {
         issues.push({ code: 'BELIEF_VISIBILITY_LEAK', severity: 'ERROR', message: `${holder.actorId} knows inaccessible fact ${factId}.`, path: `beliefs.${holder.actorId}.knownFactIds` });
+      }
+    }
+    for (const [key, belief] of Object.entries(holder.beliefs)) {
+      if (belief.range && (belief.range[0] > belief.range[1] || belief.range.some((value) => !Number.isFinite(value)))) {
+        issues.push({ code: 'BELIEF_RANGE', severity: 'ERROR', message: `${holder.actorId} has invalid range for ${key}.`, path: `beliefs.${holder.actorId}.${key}` });
+      }
+      for (const sourceFactId of belief.sourceFactIds) {
+        const source = state.facts[sourceFactId];
+        if (!source) issues.push({ code: 'BELIEF_SOURCE_UNKNOWN', severity: 'ERROR', message: `${holder.actorId} belief ${key} cites missing fact ${sourceFactId}.`, path: `beliefs.${holder.actorId}.${key}.sourceFactIds` });
+        else if (!canAccess(source.visibility, holder.actorId, state.manifest.playerId, state.gameOver)) issues.push({ code: 'BELIEF_SOURCE_LEAK', severity: 'ERROR', message: `${holder.actorId} belief ${key} cites inaccessible fact ${sourceFactId}.`, path: `beliefs.${holder.actorId}.${key}.sourceFactIds` });
       }
     }
   }
@@ -130,18 +153,35 @@ export const assertValidScenario = (campaign: Campaign) => {
   if (fatal.length) throw new Error(`Scenario validation failed: ${fatal[0].message}`);
 };
 
+const ensureActorAuthority = (state: WorldState) => {
+  const mechanismKinds = ['DIRECT_ORDER', 'DIPLOMACY', 'COERCION', 'ECONOMIC_PRESSURE', 'MILITARY_OPERATION', 'INTELLIGENCE', 'DECEPTION', 'LEGAL_ACTION', 'PUBLIC_COMMUNICATION', 'COALITION_BUILDING', 'RESOURCE_TRANSFER', 'OTHER'] as const;
+  for (const entity of Object.values(state.entities)) {
+    if (!state.manifest.authorityRules.some((rule) => rule.actorId === entity.id && rule.targetId === entity.id)) state.manifest.authorityRules.push({
+      actorId: entity.id, targetId: entity.id, mechanismKinds: [...mechanismKinds], mode: 'DIRECT', conditions: ['Migrated explicit self-authority; still bounded by declared capabilities and resources'],
+    });
+  }
+};
+
 export const migrateCampaign = (input: Campaign): Campaign => {
   const raw = structuredClone(input) as Campaign & { state: WorldState & { schemaVersion: number }; memories?: Campaign['memories'] };
   if (raw.state.schemaVersion === 2) {
     raw.memories ??= Object.fromEntries(Object.keys(raw.state.entities).map((actorId) => [actorId, { actorId, events: [], historicalPriorWeight: 1 }]));
     raw.state.manifest.unresolvedUncertainties ??= ['This migrated scenario did not explicitly record unresolved uncertainty.'];
+    raw.state.manifest.timeScaleRules ??= [];
     for (const arc of Object.values(raw.state.arcs)) arc.participantIds ??= [...new Set([...(arc.ownerId ? [arc.ownerId] : []), raw.state.manifest.playerId])];
+    for (const process of Object.values(raw.state.pendingProcesses)) {
+      process.perTurnEffects ??= [];
+      process.participantIds ??= [...new Set([process.ownerId, raw.state.manifest.playerId])];
+    }
+    ensureActorAuthority(raw.state);
     for (const audit of raw.audits) {
       const legacyAudit = audit as TurnAuditCompat;
       legacyAudit.modelCalls ??= [];
       legacyAudit.progressEvents ??= [];
       legacyAudit.actorSimulationPackets ??= [];
       legacyAudit.accessDecisions ??= [];
+      legacyAudit.counterfactualBranches ??= [];
+      legacyAudit.disagreement ??= { compared: false, material: false, severityScore: 0, differences: [], response: 'NONE' };
       legacyAudit.previousMemorySnapshot ??= structuredClone(raw.memories);
       legacyAudit.committedMemorySnapshot ??= structuredClone(raw.memories);
       legacyAudit.auditVersion ??= 2;
@@ -155,6 +195,7 @@ export const migrateCampaign = (input: Campaign): Campaign => {
   raw.state.currentDateTime = raw.state.manifest.historicalCutoff;
   raw.state.elapsedMinutes = raw.state.turn * 240;
   raw.state.manifest.timeScale = { amount: 4, unit: raw.state.manifest.timeUnit };
+  raw.state.manifest.timeScaleRules = [];
   raw.state.manifest.authorityRules = [];
   raw.state.manifest.calibrationRules = [{ id: 'legacy_default', targetType: 'METRIC', allowedImpactClasses: ['NONE', 'TRIVIAL', 'MINOR', 'MODERATE', 'MAJOR'], defaultImpactClass: 'MINOR', rationale: 'Legacy campaign compatibility calibration.' }];
   raw.state.manifest.historicalAnalogs = [];
@@ -186,8 +227,11 @@ export const migrateCampaign = (input: Campaign): Campaign => {
   for (const process of Object.values(raw.state.pendingProcesses)) {
     process.visibility ??= visibility('ACTOR_KNOWN', process.detectableBy);
     process.completed ??= false;
+    process.perTurnEffects ??= [];
+    process.participantIds ??= [...new Set([process.ownerId, playerId])];
   }
   raw.memories = Object.fromEntries(Object.keys(raw.state.entities).map((actorId) => [actorId, { actorId, events: [], historicalPriorWeight: 1 }]));
+  ensureActorAuthority(raw.state);
   for (const audit of raw.audits) {
     const legacyAudit = audit as TurnAuditCompat;
     legacyAudit.auditVersion = 2;
@@ -196,6 +240,8 @@ export const migrateCampaign = (input: Campaign): Campaign => {
     legacyAudit.progressEvents = [];
     legacyAudit.actorSimulationPackets = [];
     legacyAudit.accessDecisions = [];
+    legacyAudit.counterfactualBranches = [];
+    legacyAudit.disagreement = { compared: false, material: false, severityScore: 0, differences: [], response: 'NONE' };
     legacyAudit.previousMemorySnapshot = structuredClone(raw.memories);
     legacyAudit.committedMemorySnapshot = structuredClone(raw.memories);
   }

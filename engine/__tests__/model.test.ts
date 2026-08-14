@@ -21,5 +21,8 @@ describe('content-addressed model cache', () => {
     expect(first.value).toEqual(second.value);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(gateway.budget.snapshot().requests).toBe(1);
+    expect(gateway.tracesSince(0)).toHaveLength(2);
+    expect(gateway.tracesSince(0).map((trace) => trace.status).sort()).toEqual(['CACHED', 'SUCCEEDED']);
+    expect(gateway.tracesSince(0).every((trace) => trace.messages[0].content === 'identical dry strategy')).toBe(true);
   });
 });

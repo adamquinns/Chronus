@@ -1,6 +1,8 @@
 import { ActorBeliefState, BeliefState, Campaign, ScenarioManifest, WorldState } from './domain';
 import { canAccess, visibility } from './visibility';
 import { assertValidScenario } from './scenario';
+export { createCoalitionCampaign, createMilitaryCampaign } from './curatedScenarios';
+import { createCoalitionCampaign, createMilitaryCampaign } from './curatedScenarios';
 
 const publicVisibility = () => visibility('PUBLIC');
 const playerVisibility = () => visibility('PLAYER_KNOWN', ['kennedy']);
@@ -35,6 +37,9 @@ export const createCubanCampaign = (seed = 19621027): Campaign => {
     startingDate: 'October 27, 1962 — 12:00 PM',
     timeUnit: 'HOURS',
     timeScale: { amount: 4, unit: 'HOURS' },
+    timeScaleRules: [
+      { id: 'nuclear_edge_compression', condition: { targetType: 'METRIC', targetId: 'nuclear_tension', field: 'value', operator: 'GTE', value: 90 }, scale: { amount: 1, unit: 'HOURS' }, rationale: 'Near the nuclear threshold, operational decisions compress to hourly windows.' },
+    ],
     historicalCutoff: '1962-10-27T12:00:00-05:00',
     metricDefinitions: [
       { id: 'nuclear_tension', label: 'Nuclear Tension', description: 'Proximity to uncontrolled nuclear exchange.', min: 0, max: 100, dangerAbove: 80, visibility: playerVisibility() },
@@ -230,6 +235,16 @@ export const createCubanCampaign = (seed = 19621027): Campaign => {
     gameOver: false,
   };
 
+  for (const entity of Object.values(state.entities)) {
+    if (!manifest.authorityRules.some((rule) => rule.actorId === entity.id && rule.targetId === entity.id)) manifest.authorityRules.push({
+      actorId: entity.id,
+      targetId: entity.id,
+      mechanismKinds: ['DIRECT_ORDER', 'DIPLOMACY', 'COERCION', 'ECONOMIC_PRESSURE', 'MILITARY_OPERATION', 'INTELLIGENCE', 'DECEPTION', 'LEGAL_ACTION', 'PUBLIC_COMMUNICATION', 'COALITION_BUILDING', 'RESOURCE_TRANSFER', 'OTHER'],
+      mode: 'DIRECT',
+      conditions: ['Limited to declared capabilities, resources, institutions, and constraints'],
+    });
+  }
+
   const playerBeliefs: ActorBeliefState = {
     actorId: 'kennedy',
     knownFactIds: ['u2_shot_down', 'rfk_backchannel'],
@@ -271,5 +286,7 @@ export const createCubanCampaign = (seed = 19621027): Campaign => {
 
 export const createCampaign = (scenarioId = 'cuban_missile_crisis_black_saturday', seed?: number): Campaign => {
   if (scenarioId === 'cuban_missile_crisis_black_saturday') return createCubanCampaign(seed);
+  if (scenarioId === 'governors_compact_1975') return createCoalitionCampaign(seed);
+  if (scenarioId === 'operation_lantern') return createMilitaryCampaign(seed);
   throw new Error(`Unknown scenario: ${scenarioId}`);
 };

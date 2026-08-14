@@ -9,7 +9,7 @@ import { AdvisorAssessment, Campaign, TurnPreview, TurnProgress } from '../engin
 import { ModelGateway } from '../engine/model';
 import { runTurn } from '../engine/pipeline';
 import { exportCampaign, saveCampaign } from '../engine/persistence';
-import { isDeveloperAuditEnabled, projectPlayerVisibleChanges } from './playerVisibility';
+import { buildPlayerWhy, isDeveloperAuditEnabled } from './playerVisibility';
 import { playerVisibleState } from '../engine/projections';
 import { consultAdvisors } from '../engine/advisors';
 
@@ -20,11 +20,23 @@ interface Props {
   onExit: () => void;
 }
 
-const suggestions = [
-  'Delay retaliation. Use the Robert Kennedy–Dobrynin backchannel to offer a public non-invasion pledge and privately signal eventual Jupiter missile removal from Turkey.',
-  'Authorize a limited strike on the SAM site that killed Major Anderson while keeping the quarantine in place.',
-  'Pause low-level reconnaissance, tighten civilian control over field commands, and send Khrushchev an urgent proposal for reciprocal verified stand-down measures.',
-];
+const suggestionsByScenario: Record<string, string[]> = {
+  cuban_missile_crisis_black_saturday: [
+    'Delay retaliation. Use the Robert Kennedy–Dobrynin backchannel to offer a public non-invasion pledge and privately signal eventual Jupiter missile removal from Turkey.',
+    'Authorize a limited strike on the SAM site that killed Major Anderson while keeping the quarantine in place.',
+    'Pause low-level reconnaissance, tighten civilian control over field commands, and send Khrushchev an urgent proposal for reciprocal verified stand-down measures.',
+  ],
+  governors_compact_1975: [
+    'Keep the injunction prepared but unfiled. Privately recruit Governor Vale while labor emphasizes voting rights and business groups document insurer liability.',
+    'Publicly challenge the implementation timetable and ask aligned governors to demand a formal administrative review.',
+    'Allocate 2 legal staff-weeks to test standing and identify plaintiffs without revealing the broader coalition.',
+  ],
+  operation_lantern: [
+    'Allocate 2 reconnaissance sorties to inspect the eastern ridge and the Stone River bridge before committing the reserve.',
+    'Order 1st Division to hold while engineers reinforce the supply corridor and 3rd Division probes the western ridge.',
+    'Concentrate artillery and both divisions for a rapid assault on Lantern Pass while preserving one road lane for civilian evacuation.',
+  ],
+};
 
 const downloadText = (name: string, text: string) => {
   const blob = new Blob([text], { type: 'application/json' });
@@ -57,12 +69,17 @@ export const CausalGameInterface: React.FC<Props> = ({ initialCampaign, gateway,
     import.meta.env.DEV,
     import.meta.env.VITE_ENABLE_DEVELOPER_AUDIT,
   );
-  const playerVisibleChanges = useMemo(
-    () => latest ? projectPlayerVisibleChanges(campaign, latest) : [],
+  const playerWhy = useMemo(
+    () => latest ? buildPlayerWhy(campaign, latest) : undefined,
     [campaign, latest],
   );
 
   const knownFacts = visibleState.knownFacts;
+  const suggestions = suggestionsByScenario[campaign.state.manifest.id] ?? [
+    'Gather intelligence on the most important uncertainty before making a major commitment.',
+    'Use available relationships to negotiate a limited, reversible step toward the objective.',
+    'Conserve scarce resources while preparing a coordinated plan for the next decision window.',
+  ];
 
   const execute = async () => {
     if (!directive.trim() || running) return;
@@ -152,9 +169,10 @@ export const CausalGameInterface: React.FC<Props> = ({ initialCampaign, gateway,
 
         {!latest ? (
           <section className="bg-gray-900 border border-emerald-900/40 rounded-xl p-6 shadow-xl">
-            <div className="text-xs font-mono text-red-400 uppercase tracking-widest mb-3">Top Secret // Eyes Only</div>
-            <h1 className="text-3xl font-serif font-bold text-emerald-100 mb-4">Black Saturday</h1>
-            <p className="text-gray-300 leading-relaxed">Major Rudolf Anderson Jr. is dead. The Joint Chiefs want retaliation against the Cuban air defenses, Soviet forces are operating under dangerous communication delays, and two incompatible messages from Moscow have opened a narrow diplomatic path. You know the crisis is near its breaking point. You do not know the full extent of Soviet nuclear capability in Cuba or at sea.</p>
+            <div className="text-xs font-mono text-red-400 uppercase tracking-widest mb-3">Role briefing // {campaign.state.manifest.playerRole}</div>
+            <h1 className="text-3xl font-serif font-bold text-emerald-100 mb-4">{campaign.state.manifest.title}</h1>
+            <p className="text-gray-300 leading-relaxed">{campaign.state.manifest.premise}</p>
+            <div className="mt-4 text-sm text-gray-400">{knownFacts.slice(0, 3).map((fact) => <p key={fact.id} className="mt-1">• {fact.statement}</p>)}</div>
           </section>
         ) : (
           <section className="bg-gray-900 border border-gray-700 rounded-xl p-6 space-y-5">
@@ -167,8 +185,9 @@ export const CausalGameInterface: React.FC<Props> = ({ initialCampaign, gateway,
               <Eye size={15}/> Why did this happen? {showWhy ? <ChevronUp size={14}/> : <ChevronDown size={14}/>} 
             </button>
             {showWhy && <div className="bg-black/30 border border-gray-800 rounded p-4 space-y-3">
-              <p className="text-sm text-gray-300">These are the committed effects your role can currently observe.</p>
-              {playerVisibleChanges.map((change) => <div key={change.id} className="text-xs text-gray-400 border-l-2 border-amber-800 pl-3">
+              <p className="text-sm text-gray-300">{playerWhy?.summary}</p>
+              {playerWhy?.mechanismAssessments.map((assessment) => <p key={assessment} className="text-xs text-gray-500">• {assessment}</p>)}
+              {playerWhy?.observableChanges.map((change) => <div key={change.id} className="text-xs text-gray-400 border-l-2 border-amber-800 pl-3">
                 <div className="font-mono">{change.label}: {String(change.before)} → {String(change.after)}</div>
                 <div className="mt-1">{change.explanation}</div>
               </div>)}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createCubanCampaign } from '../../engine/scenarios';
 import { runTurn } from '../../engine/pipeline';
-import { isDeveloperAuditEnabled, projectPlayerVisibleChanges } from '../playerVisibility';
+import { buildPlayerWhy, isDeveloperAuditEnabled, projectPlayerVisibleChanges } from '../playerVisibility';
 
 describe('player and developer visibility boundaries', () => {
   it('requires both development mode and an explicit audit flag', () => {
@@ -40,5 +40,8 @@ describe('player and developer visibility boundaries', () => {
     expect(serialized).not.toContain('nuclear torpedo');
     expect(serialized).not.toContain('randomDraw');
     expect(serialized).not.toContain('actorActions');
+    const why = JSON.stringify(buildPlayerWhy(nextCampaign, audit));
+    expect(why).not.toContain('nuclear torpedo');
+    expect(why).not.toContain('actorActions');
   });
 });

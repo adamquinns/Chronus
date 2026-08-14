@@ -66,6 +66,15 @@ export const initializeScenarioDraft = (draftInput: ScenarioDraft, seed = Date.n
         mode: 'INFLUENCE',
         conditions: ['Available communication channel'],
       })),
+    ...Object.values(entities)
+      .filter((entity) => entity.id !== draft.player.id)
+      .map((entity): AuthorityRule => ({
+        actorId: entity.id,
+        targetId: entity.id,
+        mechanismKinds: ['DIRECT_ORDER', 'DIPLOMACY', 'COERCION', 'ECONOMIC_PRESSURE', 'MILITARY_OPERATION', 'INTELLIGENCE', 'DECEPTION', 'LEGAL_ACTION', 'PUBLIC_COMMUNICATION', 'COALITION_BUILDING', 'RESOURCE_TRANSFER', 'OTHER'],
+        mode: 'DIRECT',
+        conditions: ['Limited to declared capabilities, resources, institutions, and constraints'],
+      })),
   ];
 
   const manifest: ScenarioManifest = {
@@ -77,6 +86,7 @@ export const initializeScenarioDraft = (draftInput: ScenarioDraft, seed = Date.n
     startingDate: draft.startingDateLabel,
     timeUnit: draft.timeScale.unit,
     timeScale: draft.timeScale,
+    timeScaleRules: draft.timeScaleRules ?? [],
     metricDefinitions: draft.metrics.map(({ value: _value, ...metric }) => ({ ...metric, min: 0, max: 100, visibility: visibility('PLAYER_KNOWN', [draft.player.id]) })),
     historicalCutoff: draft.startingDateTime,
     authorityRules,
@@ -104,7 +114,7 @@ export const initializeScenarioDraft = (draftInput: ScenarioDraft, seed = Date.n
     relationships: Object.fromEntries(draft.relationships.map((relationship) => [relationship.id, { ...relationship, visibility: toVisibility(relationship.visibility) }])),
     arcs: Object.fromEntries(draft.arcs.map((arc) => [arc.id, { ...arc, threshold: 100, status: 'ACTIVE' as const, visibility: toVisibility(arc.visibility), onResolve: [] }])),
     facts: Object.fromEntries(draft.facts.map((fact) => [fact.id, { ...fact, visibility: toVisibility(fact.visibility), createdTurn: 0 }])),
-    pendingProcesses: {},
+    pendingProcesses: Object.fromEntries((draft.processes ?? []).map((process) => [process.id, { ...process, visibility: toVisibility(process.visibility), completed: false }])),
     goal: { ...draft.goal, status: 'ACTIVE' },
     gameOver: false,
   };
@@ -115,6 +125,20 @@ export const initializeScenarioDraft = (draftInput: ScenarioDraft, seed = Date.n
     knownFactIds: Object.values(state.facts).filter((fact) => canAccess(fact.visibility, actorId, draft.player.id)).map((fact) => fact.id),
     beliefs: {},
   };
+  for (const override of draft.beliefOverrides) {
+    const holder = actorBeliefs[override.actorId];
+    if (!holder) throw new Error(`Belief override references unknown actor ${override.actorId}.`);
+    holder.beliefs[`${override.subjectId}.${override.field}`] = {
+      subjectId: override.subjectId,
+      field: override.field,
+      estimate: override.estimate,
+      range: override.range ? [override.range[0]!, override.range[1]!] : undefined,
+      categorical: override.categorical,
+      confidence: override.confidence,
+      sourceFactIds: override.sourceFactIds,
+      updatedTurn: 0,
+    };
+  }
   const beliefs = {
     player: actorBeliefs[draft.player.id],
     actors: actorBeliefs,
@@ -141,7 +165,7 @@ export const generateCustomScenario = async (
     { role: 'user', content: premise },
   ], scenarioResearchSchema, 'ScenarioResearch');
   const draft = await gateway.callJson('scenario_architect', [
-    { role: 'system', content: 'Design a complete playable Chronus scenario package. Use stable snake_case IDs. Include explicit visibility for every item, causal arcs with participants, resources, unresolved uncertainties, calibration, authority through entity control and relationships, historical analogs where grounded, and a viable but non-prescriptive objective. Verified facts require source references. Do not pre-script future outcomes.' },
+    { role: 'system', content: 'Design a complete playable Chronus scenario package. Use stable snake_case IDs. Include explicit visibility for every item, sparse belief overrides where uncertainty or error is strategically material, causal arcs with participants, resources, unresolved uncertainties, calibration, authority through entity control and relationships, historical analogs where grounded, and a viable but non-prescriptive objective. Verified facts require source references. Do not pre-script future outcomes.' },
     { role: 'user', content: JSON.stringify({ playerRequest: premise, research: research.value }) },
   ], scenarioDraftSchema, 'ScenarioDraft');
   return initializeScenarioDraft(draft.value, seed);

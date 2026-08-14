@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ApiKeyGateway } from './components/ApiKeyGateway';
 import { CausalGameInterface } from './components/CausalGameInterface';
 import { Campaign } from './engine/domain';
-import { createCubanCampaign } from './engine/scenarios';
+import { createCampaign } from './engine/scenarios';
 import { loadMostRecentCampaign, saveCampaign } from './engine/persistence';
 import { OpenRouterGateway } from './engine/model';
 import { Clock3, PlayCircle, RotateCcw, ShieldCheck } from 'lucide-react';
@@ -32,8 +32,8 @@ const App: React.FC = () => {
     maxOutputTokens: 30_000,
   }) : undefined, [apiKey, demoMode, campaign?.state.turn]);
 
-  const begin = async () => {
-    const next = createCubanCampaign();
+  const begin = async (scenarioId: string) => {
+    const next = createCampaign(scenarioId);
     await saveCampaign(next);
     setCampaign(next);
     setScreen('PLAYING');
@@ -66,13 +66,27 @@ const App: React.FC = () => {
         <h1 className="text-5xl font-mono font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">CHRONUS</h1>
         <p className="text-gray-400 mt-3">A constrained causal counterfactual strategy simulator.</p>
       </div>
-      <div className="grid md:grid-cols-2 gap-5">
+      <div className="grid md:grid-cols-3 gap-5">
         <div className="bg-gray-900 border border-gray-700 rounded-xl p-6">
           <div className="text-xs font-mono text-red-400 uppercase tracking-widest mb-2">Golden vertical slice</div>
           <h2 className="text-2xl font-bold">Midnight in Havana</h2>
           <p className="text-gray-400 mt-2">October 27, 1962. A U-2 pilot is dead, the Joint Chiefs demand action, and hidden nuclear capabilities make every assumption dangerous.</p>
-          <button onClick={begin} className="mt-6 w-full py-3 bg-emerald-600 hover:bg-emerald-500 rounded font-bold flex items-center justify-center gap-2"><PlayCircle size={19}/> Begin new timeline</button>
+          <button onClick={() => begin('cuban_missile_crisis_black_saturday')} className="mt-6 w-full py-3 bg-emerald-600 hover:bg-emerald-500 rounded font-bold flex items-center justify-center gap-2"><PlayCircle size={19}/> Begin timeline</button>
         </div>
+        <div className="bg-gray-900 border border-gray-700 rounded-xl p-6">
+          <div className="text-xs font-mono text-amber-400 uppercase tracking-widest mb-2">Political coalition</div>
+          <h2 className="text-2xl font-bold">The Governors’ Compact</h2>
+          <p className="text-gray-400 mt-2">Build legal, labor, business, and state resistance without authority to order any of them—or exposing the alliance too soon.</p>
+          <button onClick={() => begin('governors_compact_1975')} className="mt-6 w-full py-3 bg-amber-700 hover:bg-amber-600 rounded font-bold flex items-center justify-center gap-2"><PlayCircle size={19}/> Begin timeline</button>
+        </div>
+        <div className="bg-gray-900 border border-gray-700 rounded-xl p-6">
+          <div className="text-xs font-mono text-red-400 uppercase tracking-widest mb-2">Military campaign</div>
+          <h2 className="text-2xl font-bold">Operation Lantern</h2>
+          <p className="text-gray-400 mt-2">Command a mountain corps through logistics, hidden enemy reserves, civilian constraints, and a narrowing operational window.</p>
+          <button onClick={() => begin('operation_lantern')} className="mt-6 w-full py-3 bg-red-800 hover:bg-red-700 rounded font-bold flex items-center justify-center gap-2"><PlayCircle size={19}/> Begin timeline</button>
+        </div>
+      </div>
+      <div className="grid mt-5">
         <div className="bg-gray-900 border border-gray-700 rounded-xl p-6">
           <div className="text-xs font-mono text-blue-400 uppercase tracking-widest mb-2">Persistent campaign</div>
           {loading ? <p className="text-gray-500">Checking IndexedDB…</p> : resume ? <>

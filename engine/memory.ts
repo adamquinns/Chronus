@@ -32,6 +32,20 @@ export const updateActorMemories = (
     });
   }
 
+  for (const change of changes.filter((item) => item.targetType === 'RELATIONSHIP' && item.field === 'commitments')) {
+    const relationship = stateAfter.relationships[change.targetId];
+    if (!relationship) continue;
+    for (const actorId of [relationship.fromId, relationship.toId]) {
+      const memory = next[actorId];
+      if (!memory) continue;
+      memory.events.push({
+        id: `memory_${auditId}_${change.id}_${actorId}_commitment`, actorId, turn: stateAfter.turn, kind: 'COMMITMENT',
+        summary: `${stateAfter.entities[relationship.fromId]?.name ?? relationship.fromId} and ${stateAfter.entities[relationship.toId]?.name ?? relationship.toId}: ${String((change.after as string[]).at(-1) ?? change.cause)}`,
+        importance: 'MODERATE', relatedEntityIds: [relationship.fromId, relationship.toId], sourceAuditId: auditId,
+      });
+    }
+  }
+
   for (const change of changes.filter((item) => importanceScore[item.impactClass] >= importanceScore.MODERATE)) {
     const relatedActorIds = new Set<string>();
     if (stateAfter.entities[change.targetId]) relatedActorIds.add(change.targetId);

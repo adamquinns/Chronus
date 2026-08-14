@@ -131,6 +131,10 @@ export const scenarioDraftSchema = z.object({
   startingDateLabel: z.string(),
   startingDateTime: z.string(),
   timeScale: z.object({ amount: z.number().int().positive(), unit: z.enum(['MINUTES', 'HOURS', 'DAYS', 'WEEKS', 'MONTHS', 'YEARS']) }),
+  timeScaleRules: z.array(z.object({
+    id: z.string(), condition: z.object({ targetType: z.literal('METRIC'), targetId: z.string(), field: z.literal('value'), operator: z.enum(['LT', 'LTE', 'EQ', 'GTE', 'GT']), value: z.number() }),
+    scale: z.object({ amount: z.number().int().positive(), unit: z.enum(['MINUTES', 'HOURS', 'DAYS', 'WEEKS', 'MONTHS', 'YEARS']) }), rationale: z.string(),
+  })).max(8).optional(),
   player: z.object({ id: z.string(), name: z.string(), role: z.string(), objectives: z.array(z.string()).min(1), capabilities: z.array(z.string()).min(1), constraints: z.array(z.string()) }),
   metrics: z.array(z.object({ id: z.string(), label: z.string(), description: z.string(), value: z.number().min(0).max(100), dangerBelow: z.number().min(0).max(100).optional(), dangerAbove: z.number().min(0).max(100).optional() })).min(2).max(12),
   entities: z.array(z.object({ id: z.string(), name: z.string(), kind: z.enum(['PERSON', 'FACTION', 'INSTITUTION', 'MILITARY', 'STATE', 'ASSET']), description: z.string(), objectives: z.array(z.string()).min(1), capabilities: z.array(z.string()).min(1), constraints: z.array(z.string()), power: z.number().min(0).max(100), resolve: z.number().min(0).max(100), controllerId: z.string().optional(), visibility: visibilityDraftSchema })).min(1).max(20),
@@ -138,6 +142,10 @@ export const scenarioDraftSchema = z.object({
   relationships: z.array(z.object({ id: z.string(), fromId: z.string(), toId: z.string(), alignment: z.number().min(0).max(100), trust: z.number().min(0).max(100), leverage: z.number().min(0).max(100), communication: z.boolean(), commitments: z.array(z.string()), visibility: visibilityDraftSchema })).max(40),
   facts: z.array(z.object({ id: z.string(), statement: z.string(), provenance: z.enum(['VERIFIED_FACT', 'WELL_SUPPORTED_INFERENCE', 'CONTESTED_INTERPRETATION', 'SCENARIO_ABSTRACTION']), confidence, visibility: visibilityDraftSchema, sourceRefs: z.array(z.string()) })).min(1).max(40),
   arcs: z.array(z.object({ id: z.string(), title: z.string(), description: z.string(), progress: z.number().min(0).max(100), direction: z.enum(['RISING', 'FALLING', 'STABLE']), dueTurn: z.number().int().positive().optional(), ownerId: z.string().optional(), participantIds: z.array(z.string()), visibility: visibilityDraftSchema })).max(15),
+  processes: z.array(z.object({
+    id: z.string(), label: z.string(), ownerId: z.string(), dueTurn: z.number().int().positive(), progress: z.number().nonnegative(), requiredProgress: z.number().positive(),
+    onMature: z.array(effectSchema).max(12), perTurnEffects: z.array(effectSchema).max(8), participantIds: z.array(z.string()), detectableBy: z.array(z.string()), visibility: visibilityDraftSchema,
+  })).max(15).optional(),
   goal: z.object({
     id: z.string(), title: z.string(), description: z.string(), victoryConditions: z.array(z.string()).min(1), failureConditions: z.array(z.string()).min(1),
     victoryRules: z.array(z.object({ targetType: z.enum(['METRIC', 'RESOURCE', 'ENTITY', 'ARC', 'FACT']), targetId: z.string(), field: z.string(), operator: z.enum(['LT', 'LTE', 'EQ', 'GTE', 'GT', 'EXISTS', 'NOT_EXISTS']), value: z.union([z.number(), z.string(), z.boolean()]).optional() })).min(1),
@@ -149,4 +157,9 @@ export const scenarioDraftSchema = z.object({
   historicalAnalogs: z.array(z.object({ id: z.string(), label: z.string(), mechanismKind: mechanismSchema.shape.kind, targetId: z.string(), impactClass: impact, context: z.string(), provenance: z.enum(['VERIFIED_FACT', 'WELL_SUPPORTED_INFERENCE', 'CONTESTED_INTERPRETATION', 'SCENARIO_ABSTRACTION']), sourceRefs: z.array(z.string()) })).max(10),
   advisors: z.array(z.object({ id: z.string(), name: z.string(), expertise: z.array(z.string()), worldview: z.string(), bias: z.string(), relationship: z.number().min(0).max(100), actorId: z.string().optional() })).max(6),
   unresolvedUncertainties: z.array(z.string()).min(1).max(20),
+  beliefOverrides: z.array(z.object({
+    actorId: z.string(), subjectId: z.string(), field: z.string(), estimate: z.number().optional(),
+    range: z.tuple([z.number(), z.number()]).optional(), categorical: z.string().optional(), confidence,
+    sourceFactIds: z.array(z.string()),
+  })).max(60).default([]),
 });
