@@ -1,126 +1,71 @@
-import React, { useState, useEffect } from 'react';
-import { GameStatus, TurnData, HistoryEntry } from './types';
-import { initializeGame } from './services/geminiService';
-import { ScenarioSelector } from './components/ScenarioSelector';
-import { GameInterface } from './components/GameInterface';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ApiKeyGateway } from './components/ApiKeyGateway';
-import { RefreshCw, Zap, AlertTriangle, PlayCircle } from 'lucide-react';
+import { CausalGameInterface } from './components/CausalGameInterface';
+import { Campaign } from './engine/domain';
+import { createCubanCampaign } from './engine/scenarios';
+import { loadMostRecentCampaign, saveCampaign } from './engine/persistence';
+import { OpenRouterGateway } from './engine/model';
+import { Clock3, PlayCircle, RotateCcw, ShieldCheck } from 'lucide-react';
+
+type Screen = 'GATEWAY' | 'MENU' | 'PLAYING';
 
 const App: React.FC = () => {
-  const [status, setStatus] = useState<GameStatus>(GameStatus.MENU);
-  const [initialTurnData, setInitialTurnData] = useState<TurnData | null>(null);
-  const [initialHistoryData, setInitialHistoryData] = useState<HistoryEntry[] | null>(null);
-  const [loadingError, setLoadingError] = useState<string | null>(null);
-  const [hasSave, setHasSave] = useState(false);
-  const [hasKey, setHasKey] = useState(() => {
-    const isDev = (import.meta as any).env?.DEV;
-    const localEnvKey = isDev ? (import.meta as any).env?.VITE_GEMINI_API_KEY : null;
-    return !!localStorage.getItem('chronus_api_key') || !!localEnvKey;
-  });
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem('chronus_openrouter_key') ?? '');
+  const [demoMode, setDemoMode] = useState(false);
+  const [screen, setScreen] = useState<Screen>(() => localStorage.getItem('chronus_openrouter_key') ? 'MENU' : 'GATEWAY');
+  const [campaign, setCampaign] = useState<Campaign>();
+  const [resume, setResume] = useState<Campaign>();
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (localStorage.getItem('chronus_game_state')) {
-      setHasSave(true);
-    }
+    loadMostRecentCampaign().then(setResume).catch(console.error).finally(() => setLoading(false));
   }, []);
 
-  const handleResumeGame = () => {
-    try {
-      const saved = localStorage.getItem('chronus_game_state');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.history && parsed.currentTurnData) {
-          setInitialHistoryData(parsed.history);
-          setInitialTurnData(parsed.currentTurnData);
-          setStatus(GameStatus.PLAYING);
-          return;
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    setHasSave(false);
-    localStorage.removeItem('chronus_game_state');
+  const gateway = useMemo(() => apiKey && !demoMode ? new OpenRouterGateway(apiKey, undefined, {
+    maxUsd: 2.5,
+    maxRequests: 14,
+    maxInputTokens: 90_000,
+    maxOutputTokens: 30_000,
+  }) : undefined, [apiKey, demoMode, campaign?.state.turn]);
+
+  const begin = async () => {
+    const next = createCubanCampaign();
+    await saveCampaign(next);
+    setCampaign(next);
+    setScreen('PLAYING');
   };
 
-  const handleStartGame = async (context: string) => {
-    setStatus(GameStatus.LOADING);
-    setLoadingError(null);
-    try {
-      const data = await initializeGame(context);
-      setInitialTurnData(data);
-      setStatus(GameStatus.PLAYING);
-    } catch (error: any) {
-      console.error(error);
-      const msg = error instanceof Error ? error.message : "Unknown error occurred";
-      setLoadingError(`CRITICAL FAILURE: ${msg}`);
-      setStatus(GameStatus.MENU);
-    }
-  };
+  if (screen === 'GATEWAY') return <ApiKeyGateway onUnlock={(key) => { setApiKey(key); setDemoMode(false); setScreen('MENU'); }} onDemo={() => { setDemoMode(true); setScreen('MENU'); }}/>;
 
-  const handleRestart = () => {
-    setStatus(GameStatus.MENU);
-    setInitialTurnData(null);
-    setInitialHistoryData(null);
-    localStorage.removeItem('chronus_game_state');
-    setHasSave(false);
-  };
+  if (screen === 'PLAYING' && campaign) return <CausalGameInterface initialCampaign={campaign} gateway={gateway} onCampaignChange={setCampaign} onExit={() => setScreen('MENU')}/>;
 
-  if (!hasKey) {
-    return <ApiKeyGateway onUnlock={(key) => {
-      setHasKey(true);
-    }}/>;
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-950 font-sans text-gray-100 flex flex-col">
-      {status === GameStatus.MENU && (
-        <div className="flex-grow flex flex-col items-center justify-center p-4">
-           {loadingError && (
-             <div className="mb-6 p-4 bg-red-900/30 border border-red-700 rounded-lg text-red-200 max-w-2xl w-full text-center flex flex-col items-center gap-2 animate-fade-in shadow-xl break-words">
-               <AlertTriangle className="text-red-500 w-8 h-8" />
-               <span className="font-mono text-sm">{loadingError}</span>
-               <p className="text-xs text-red-400 mt-2">Check your API key quota or connection and try again.</p>
-             </div>
-           )}
-           {hasSave && (
-             <div className="mb-8 w-full max-w-2xl bg-gray-900 border border-emerald-900/50 rounded-lg p-6 flex items-center justify-between shadow-lg">
-               <div>
-                 <h3 className="text-xl font-bold font-mono text-emerald-400">SESSION DETECTED</h3>
-                 <p className="text-sm text-gray-400">An active timeline simulation was found in your local records.</p>
-               </div>
-               <button 
-                 onClick={handleResumeGame}
-                 className="flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold uppercase tracking-wider rounded-lg transition-colors shadow-lg shadow-emerald-900/20"
-               >
-                 <PlayCircle size={20} /> Resume
-               </button>
-             </div>
-           )}
-           <ScenarioSelector onSelect={handleStartGame} />
+  return <div className="min-h-screen bg-gray-950 text-gray-100 flex items-center justify-center p-4">
+    <div className="w-full max-w-5xl">
+      <div className="text-center mb-10">
+        <div className="inline-flex p-3 rounded-full bg-emerald-950 border border-emerald-900 mb-4"><Clock3 className="text-emerald-400" size={34}/></div>
+        <h1 className="text-5xl font-mono font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">CHRONUS</h1>
+        <p className="text-gray-400 mt-3">A constrained causal counterfactual strategy simulator.</p>
+      </div>
+      <div className="grid md:grid-cols-2 gap-5">
+        <div className="bg-gray-900 border border-gray-700 rounded-xl p-6">
+          <div className="text-xs font-mono text-red-400 uppercase tracking-widest mb-2">Golden vertical slice</div>
+          <h2 className="text-2xl font-bold">Midnight in Havana</h2>
+          <p className="text-gray-400 mt-2">October 27, 1962. A U-2 pilot is dead, the Joint Chiefs demand action, and hidden nuclear capabilities make every assumption dangerous.</p>
+          <button onClick={begin} className="mt-6 w-full py-3 bg-emerald-600 hover:bg-emerald-500 rounded font-bold flex items-center justify-center gap-2"><PlayCircle size={19}/> Begin new timeline</button>
         </div>
-      )}
-
-      {status === GameStatus.LOADING && (
-        <div className="flex-grow flex flex-col items-center justify-center p-4 space-y-6 animate-pulse">
-           <Zap size={64} className="text-emerald-400" />
-           <h2 className="text-3xl font-mono font-bold text-emerald-500 tracking-widest">BUILDING WORLD STATE</h2>
-           <p className="text-gray-500 font-mono">Calculating historical trajectories...</p>
-           <div className="w-64 h-2 bg-gray-800 rounded-full overflow-hidden">
-             <div className="h-full bg-emerald-500 animate-[width_2s_ease-in-out_infinite]" style={{ width: '50%' }}></div>
-           </div>
+        <div className="bg-gray-900 border border-gray-700 rounded-xl p-6">
+          <div className="text-xs font-mono text-blue-400 uppercase tracking-widest mb-2">Persistent campaign</div>
+          {loading ? <p className="text-gray-500">Checking IndexedDB…</p> : resume ? <>
+            <h2 className="text-2xl font-bold">{resume.state.manifest.title}</h2>
+            <p className="text-gray-400 mt-2">Turn {resume.state.turn} · {resume.state.dateLabel}</p>
+            <button onClick={() => { setCampaign(resume); setScreen('PLAYING'); }} className="mt-6 w-full py-3 bg-blue-700 hover:bg-blue-600 rounded font-bold flex items-center justify-center gap-2"><RotateCcw size={18}/> Resume campaign</button>
+          </> : <p className="text-gray-500">No saved campaign found on this device.</p>}
         </div>
-      )}
-
-      {status === GameStatus.PLAYING && initialTurnData && (
-        <GameInterface 
-           initialTurn={initialTurnData} 
-           initialHistory={initialHistoryData || undefined}
-           onRestart={handleRestart} 
-        />
-      )}
+      </div>
+      <div className="mt-6 flex items-start gap-3 bg-black/30 border border-gray-800 rounded p-4 text-sm text-gray-500"><ShieldCheck className="text-emerald-500 shrink-0" size={18}/> Models interpret and challenge. Only the deterministic state engine can commit reality. Every mechanical change retains an attributable cause.</div>
+      <button onClick={() => setScreen('GATEWAY')} className="block mx-auto mt-5 text-xs text-gray-600 hover:text-gray-400">Change API access mode</button>
     </div>
-  );
+  </div>;
 };
 
 export default App;

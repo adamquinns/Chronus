@@ -1,21 +1,22 @@
 import React, { useState } from 'react';
-import { Lock, Key, AlertTriangle, Terminal, CheckCircle } from 'lucide-react';
+import { Lock, Key, AlertTriangle, Terminal, CheckCircle, FlaskConical } from 'lucide-react';
 
 interface ApiKeyGatewayProps {
   onUnlock: (key: string) => void;
+  onDemo?: () => void;
 }
 
-export const ApiKeyGateway: React.FC<ApiKeyGatewayProps> = ({ onUnlock }) => {
+export const ApiKeyGateway: React.FC<ApiKeyGatewayProps> = ({ onUnlock, onDemo }) => {
   const [apiKey, setApiKey] = useState('');
   const [error, setError] = useState('');
 
   const handleUnlock = () => {
-    if (!apiKey.trim() || apiKey.trim().length < 30) {
-      setError('Invalid sequence length detected. Please provide a valid Gemini API Key.');
+    if (!apiKey.trim().startsWith('sk-or-v1-') || apiKey.trim().length < 50) {
+      setError('Please provide a valid OpenRouter API key beginning with sk-or-v1-.');
       return;
     }
     // Save to local storage
-    localStorage.setItem('chronus_api_key', apiKey.trim());
+    localStorage.setItem('chronus_openrouter_key', apiKey.trim());
     onUnlock(apiKey.trim());
   };
 
@@ -35,9 +36,8 @@ export const ApiKeyGateway: React.FC<ApiKeyGatewayProps> = ({ onUnlock }) => {
         
         <div className="p-8 space-y-6 relative z-10">
           <p className="font-mono text-sm text-gray-300 leading-relaxed">
-            Welcome to the <strong className="text-emerald-400">Chronus Divergence Engine</strong>. 
-            To prevent unauthorized resource consumption, this simulation requires a personal 
-            uplink key.
+            Chronus uses several independent models through <strong className="text-emerald-400">OpenRouter</strong>
+            to compile, challenge, adjudicate, and narrate each turn. Your key stays in this browser profile.
           </p>
 
           <div className="bg-gray-950 border border-gray-800 p-4 rounded-lg space-y-3">
@@ -45,37 +45,37 @@ export const ApiKeyGateway: React.FC<ApiKeyGatewayProps> = ({ onUnlock }) => {
               <Key size={14} /> How to gain access:
             </h3>
             <ol className="list-decimal list-inside text-sm text-gray-400 space-y-2">
-              <li>Click the link below to visit Google AI Studio.</li>
-              <li>Sign into any standard Google account.</li>
-              <li>Click <strong className="text-gray-200">"Create API Key"</strong>.</li>
+              <li>Open your OpenRouter account.</li>
+              <li>Create a key with a conservative credit limit.</li>
+              <li>Paste it below. Never commit it to the repository.</li>
             </ol>
             <div className="mt-4 p-3 bg-emerald-900/10 border border-emerald-900/50 rounded flex items-start gap-3">
               <CheckCircle size={16} className="text-emerald-500 shrink-0 mt-0.5" />
               <p className="text-xs text-emerald-400/90 leading-relaxed">
-                <strong>Zero Cost. No Credit Card Needed.</strong><br/>
-                Google's Gemini API has a permanently free tier for developers. By generating your own free key, you can run this simulation endlessly without anyone paying a cent. Your key is stored strictly on your local device.
+                <strong>Cost-controlled BYOK.</strong><br/>
+                Chronus enforces per-turn request and token limits. OpenRouter billing and account-level limits remain authoritative.
               </p>
             </div>
             <a 
-              href="https://aistudio.google.com/app/apikey" 
+              href="https://openrouter.ai/settings/keys"
               target="_blank" 
               rel="noopener noreferrer"
               className="mt-2 text-sm font-bold text-blue-400 hover:text-blue-300 transition-colors inline-block"
             >
-              &gt; Get your free Gemini API Key here
+              &gt; Manage OpenRouter API keys
             </a>
           </div>
 
           <div className="space-y-2">
              <label className="text-xs font-mono text-gray-500 uppercase tracking-widest">
-               Enter Gemini API Key
+               Enter OpenRouter API Key
              </label>
              <input 
                type="password"
                value={apiKey}
                onChange={(e) => { setApiKey(e.target.value); setError(''); }}
                className="w-full bg-black border border-gray-700 rounded p-3 text-sm text-gray-200 font-mono focus:border-emerald-500 focus:outline-none transition-colors"
-               placeholder="AIzaSy..."
+               placeholder="sk-or-v1-..."
                onKeyDown={(e) => e.key === 'Enter' && handleUnlock()}
              />
              {error && <p className="text-xs text-red-500 font-bold animate-pulse mt-1 flex items-center gap-1"><AlertTriangle size={12}/> {error}</p>}
@@ -89,6 +89,14 @@ export const ApiKeyGateway: React.FC<ApiKeyGatewayProps> = ({ onUnlock }) => {
            >
              <Key size={18} /> INITIATE UPLINK
            </button>
+           {onDemo && (
+             <button
+               onClick={onDemo}
+               className="w-full mt-3 py-2 text-xs text-gray-500 hover:text-gray-300 font-mono flex justify-center items-center gap-2"
+             >
+               <FlaskConical size={14} /> Run deterministic demo without model calls
+             </button>
+           )}
         </div>
       </div>
     </div>
