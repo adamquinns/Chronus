@@ -1,6 +1,6 @@
 # Chronus PRD Compliance Gate
 
-This document is a release gate, not a roadmap. A row may be marked `PASS` only when the implementation exists and the named automated evidence passes. `PARTIAL` and `MISSING` block completion.
+This document is a release gate, not a roadmap. It reflects the user-approved release scope of two supported scenarios: **Midnight in Havana** (Cuban Missile Crisis) and **Twilight of the Republic** (modern constitutional crisis). Older scenario packages remain preserved as design guidance and regression fixtures, but are not presented as supported content. A row is `PASS` only when the implementation exists and the named evidence passes.
 
 | Requirement | Status | Required evidence |
 | --- | --- | --- |
@@ -22,8 +22,7 @@ This document is a release gate, not a roadmap. A row may be marked `PASS` only 
 | Validation and bounded recovery | PASS | Normal validation, one repair, deep escalation, and abort-without-mutation tests |
 | Historical provenance and prior decay | PASS | Scenario provenance validation and divergence-adaptation suite |
 | Goal continuity, victory, defeat, and terminal conditions | PASS | Typed condition, terminal victory/defeat, deadline fallback, and successor-objective tests |
-| Scenario package schema and validation | PASS | All three curated packages pass the authoritative initializer and validation corpus |
-| AI-assisted custom scenario authoring | PASS | Live two-model generation passed; optional metadata normalization and 10+ turn custom suite pass |
+| Supported scenario packages | PASS | CMC and Twilight both validate, expose full narrative-world packages, opening scenes, advisors, hidden facts, arcs, goals, and scenario calibration (`completion.test.ts`) |
 | Structured persistence and recovery | PASS | IndexedDB, migration, exact rollback, validated import/export, reconstruction tests, and import UI |
 | Complete reproducible audit record | PASS | Prior/committed snapshots and hashes, beliefs, memories, packets, calls, timings, RNG, and diff replay |
 | Advisors and no-turn consultation | PASS | Access-safe, bias-disclosed, non-mutating API/unit tests and browser flow |
@@ -32,13 +31,13 @@ This document is a release gate, not a roadmap. A row may be marked `PASS` only 
 | Truthful progress and Situation Room | PASS | Started/completed stages plus pre-outcome strategy, stakes, advice, intelligence, and tradeoffs |
 | Developer and post-game declassification | PASS | Development-plus-flag gate, post-game access test, and complete trace/declassification UI |
 | OpenRouter role configuration and isolation | PASS | Centralized routes, per-role packets, strict-schema adapter, traces, budgets, and model-change eval gate |
-| Single-turn regression suite | PASS | Required Section 73 property families pass structurally and 14/14 in live evaluation |
-| Multi-turn regression suite | PASS | CMC 12 turns, coalition 15, military 12, custom 10+, and narrative-fatigue suites pass |
+| Single-turn regression suite | PASS | Required property families pass structurally and 15/15 in live evaluation |
+| Multi-turn regression suite | PASS | CMC and Twilight deterministic sustained-play suites pass; checkpointed CMC live gate commits 12/12 turns with every gate passing (`multiturn-live.json`) |
 | Original d20 baseline comparison | PASS | Retired resolver reproduced from revision `22ae84a`; causal engine scores 7/7 versus 0/7 |
-| Production/browser accessibility QA | PASS | Casual and advanced flows, all curated scenarios, accessible names, player secrecy, mobile 390px overflow check, and zero browser errors |
+| Production/browser accessibility QA | PASS | CMC and Twilight opening flows, generated and authored options, cabinet consultation, accessible names, player secrecy, desktop and 390×844 mobile overflow checks, and zero browser console errors |
 
 ## Completion rule
 
 Release is permitted only when every row is `PASS`, all automated tests and eval gates pass, the production build succeeds, and the final code-to-PRD audit finds no untracked requirement.
 
-Latest evidence is written to `evals/results/complete.json`. The 2026-08-14 completion run recorded structural 19/19, live 14/14, custom scenario validation PASS, and baseline 7/7 versus 0/7. Browser QA was performed against the local production-equivalent Vite app at desktop and 390×844 mobile viewport.
+Evidence is written to `evals/results/complete.json` and `evals/results/multiturn-live.json`. The 2026-08-14 gate recorded 63/63 deterministic tests, structural 20/20, live behavioral 15/15, and baseline 7/7 versus retired d20 0/7. The 12-turn live CMC campaign passed zero-error validation, calibration stability, concealment detection (84 audited draws), autonomous initiative (25 committed effects), externally graded late narrative quality, and exact snapshot reconstruction. Browser QA covered both supported scenarios at desktop and 390×844 mobile viewports.

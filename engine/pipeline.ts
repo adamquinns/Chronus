@@ -26,6 +26,8 @@ import { buildAccessDecisionMatrix, projectChangesForViewer, visibility } from '
 import { validateActorActions, validateAdjudicationProposal } from './validation';
 import { snapshotHash } from './audit';
 import { buildCounterfactualBranches } from './branching';
+import { resolveDetection } from './detection';
+import { buildNarrativePacket } from './narrative';
 
 export interface RunTurnOptions {
   gateway?: ModelGateway;
@@ -46,6 +48,13 @@ const progress = (
 const usageDelta = (before: ReturnType<ModelGateway['budget']['snapshot']>, after: ReturnType<ModelGateway['budget']['snapshot']>) => ({
   requests: after.requests - before.requests,
   costUsd: after.costUsd - before.costUsd,
+});
+
+const extremeDangerMetric = (campaign: Campaign) => campaign.state.manifest.metricDefinitions.some((definition) => {
+  const value = campaign.state.metrics[definition.id];
+  if (definition.dangerAbove !== undefined) return value >= definition.dangerAbove + 0.75 * (definition.max - definition.dangerAbove);
+  if (definition.dangerBelow !== undefined) return value <= definition.dangerBelow - 0.75 * (definition.dangerBelow - definition.min);
+  return false;
 });
 
 export const reconcileAdjudications = (primary: Adjudication, second: Adjudication): { adjudication: Adjudication; finding?: RedTeamFinding; disagreement: ModelDisagreement } => {
@@ -124,7 +133,7 @@ const repairAdjudication = async (
   const result = await gateway.callJson(role, [
     {
       role: 'system',
-      content: 'Repair an invalid causal adjudication. Preserve supported judgments, remove only invalid effects, use existing targets and mechanisms, obey feasibility and scenario calibration, and return a complete adjudication. Every recommended effect must include a non-empty cause and dependencies array. Do not add capabilities or arbitrary deltas.',
+      content: 'Repair an invalid causal adjudication. Preserve supported judgments, remove only invalid effects, use existing targets and mechanisms, obey feasibility and scenario calibration, and return a complete adjudication. Legal target fields are exactly: METRIC.value; RESOURCE.amount; ENTITY.power/resolve/status; RELATIONSHIP.alignment/trust/leverage/commitments; ARC.progress; FACT.statement/discover; PROCESS.progress/status. GOAL effects are not permitted. Every recommended effect must include a non-empty cause and dependencies array. Do not add capabilities or arbitrary deltas.',
     },
     {
       role: 'user',
@@ -200,11 +209,12 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
 
   progress(options, 'ACTORS', depth === 'ROUTINE' ? 'Actor simulation not required' : 'Simulating relevant actors', depth === 'ROUTINE' ? 'This narrow action has no material actor response before commitment.' : 'Each actor receives only its permitted beliefs and observations.');
   progress(options, 'RED_TEAM', depth === 'ROUTINE' ? 'Routine constraint audit' : 'Challenging the strategy', depth === 'ROUTINE' ? 'Hard constraints provide sufficient adversarial checking.' : 'Auditing hidden dependencies, capabilities, and second-order effects.');
+  const detection = resolveDetection(dryStrategy, Object.keys(campaign.state.entities).filter((actorId) => actorId !== campaign.state.manifest.playerId), campaign.state);
   const [actorSimulation, redTeam] = depth === 'ROUTINE'
-    ? [{ actions: [], packets: [] }, await runRedTeam(dryStrategy, feasibility, [], campaign.state, precedents)]
+    ? [{ actions: [], packets: [] }, await runRedTeam(dryStrategy, rawDirective, feasibility, [], campaign.state, precedents)]
     : await Promise.all([
-      simulateActors(dryStrategy, campaign.state, campaign.beliefs, depth, options.gateway, campaign.memories),
-      runRedTeam(dryStrategy, feasibility, [], campaign.state, precedents, options.gateway),
+      simulateActors(dryStrategy, campaign.state, campaign.beliefs, depth, options.gateway, campaign.memories, detection.perceptions),
+      runRedTeam(dryStrategy, rawDirective, feasibility, [], campaign.state, precedents, options.gateway),
     ]);
   const actorActions = actorSimulation.actions;
   const counterfactualBranches = depth === 'DEEP' ? buildCounterfactualBranches(dryStrategy, actorActions, redTeam, campaign.state) : [];
@@ -220,7 +230,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     dryStrategy.mechanisms.some((mechanism) => mechanism.kind === 'OTHER')
     || dryStrategy.mechanisms.length >= 5
     || redTeam.some((finding) => finding.severity === 'BLOCKING')
-    || campaign.state.metrics.nuclear_tension >= 95
+    || extremeDangerMetric(campaign)
   );
   const secondPromise = needsSecondOpinion && options.gateway
     ? getSecondOpinion(campaign, dryStrategy, feasibility, actorActions, redTeam, precedents, counterfactualBranches, options.gateway)
@@ -283,13 +293,13 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     }
   }
   if (proposalFailures.length) throw new Error(`Adjudication rejected: ${proposalFailures[0].message}`);
-  let adjudication = sanitizeAdjudication(rawAdjudication, campaign.state, depth, feasibility, actorActions);
+  let adjudication = sanitizeAdjudication(rawAdjudication, campaign.state, depth, feasibility, actorActions, dryStrategy);
   let disagreement: ModelDisagreement = { compared: false, material: false, severityScore: 0, differences: [], response: 'NONE' };
   if (needsSecondOpinion && options.gateway) {
     try {
       const secondResult = await secondPromise!;
       if ('error' in secondResult) throw secondResult.error;
-      const second = sanitizeAdjudication(secondResult.value, campaign.state, depth, feasibility, actorActions);
+      const second = sanitizeAdjudication(secondResult.value, campaign.state, depth, feasibility, actorActions, dryStrategy);
       const reconciled = reconcileAdjudications(adjudication, second);
       adjudication = reconciled.adjudication;
       disagreement = reconciled.disagreement;
@@ -309,27 +319,31 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     .filter((finding) => finding.classification === 'CERTAIN')
     .map((finding) => finding.mechanismId));
   const uncertainEffects = adjudication.recommendedEffects
-    .filter((effect) => !certainMechanismIds.has(effect.mechanismId));
+    .filter((effect) => !effect.actorId && !certainMechanismIds.has(effect.mechanismId));
   const hasResidualUncertainty = uncertainEffects.length > 0 && adjudication.outcomeBands.length > 0;
   const draw = hasResidualUncertainty
-    ? drawSeeded(campaign.state.rngSeed, campaign.state.rngCursor)
+    ? drawSeeded(campaign.state.rngSeed, detection.cursor)
     : undefined;
   const sampledOutcome = draw
     ? selectWeighted(adjudication.outcomeBands, draw.value)
     : undefined;
-  const certainEffectIds = adjudication.recommendedEffects
-    .filter((effect) => certainMechanismIds.has(effect.mechanismId))
+  const playerCertainEffectIds = adjudication.recommendedEffects
+    .filter((effect) => !effect.actorId && certainMechanismIds.has(effect.mechanismId))
     .map((effect) => effect.id);
+  const autonomousEffectIds = adjudication.recommendedEffects.filter((effect) => effect.actorId).map((effect) => effect.id);
+  const certainEffectIds = [...new Set([...playerCertainEffectIds, ...autonomousEffectIds])];
   const selectedOutcome = sampledOutcome
     ? { ...sampledOutcome, effectIds: [...new Set([...sampledOutcome.effectIds, ...certainEffectIds])] }
     : {
-      id: certainEffectIds.length ? 'deterministic' : 'no_feasible_effect',
-      label: certainEffectIds.length ? 'Executed as ordered' : 'No feasible effect',
+      id: playerCertainEffectIds.length ? 'deterministic' : 'no_feasible_effect',
+      label: playerCertainEffectIds.length ? 'Executed as ordered' : 'No feasible player effect',
       probability: 1,
       effectIds: certainEffectIds,
-      description: certainEffectIds.length
+      description: playerCertainEffectIds.length
         ? 'Hard feasibility established a deterministic result; no uncertainty draw was used.'
-        : 'No feasible player mechanism produced an authoritative effect.',
+        : autonomousEffectIds.length
+          ? 'No feasible player mechanism produced an authoritative effect; independent actors continued to move.'
+          : 'No feasible player mechanism produced an authoritative effect.',
     };
   const selectedEffectIds = new Set(selectedOutcome.effectIds);
   const chosenEffects: EffectRecommendation[] = adjudication.recommendedEffects.filter((effect) => selectedEffectIds.has(effect.id));
@@ -381,7 +395,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
 
   progress(options, 'COMMIT', 'Committing authoritative state', 'Applying validated effects with causal provenance.');
   const committed = commitEffects(campaign.state, [...selectedEffects, ...scheduledEffects, ...maturedEffects, ...worldEffects]);
-  committed.state.rngCursor = draw?.cursor ?? campaign.state.rngCursor;
+  committed.state.rngCursor = draw?.cursor ?? detection.cursor;
   committed.state = advanceScenarioTime(committed.state);
   progress(options, 'COMMIT', 'History committed', 'Only engine-validated effects changed authoritative state.', 'COMPLETED');
 
@@ -399,16 +413,8 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     committed.changes,
     dryStrategy,
   );
-  const narrative = await narrate(
-    priorState,
-    committed.state,
-    priorBeliefs,
-    nextBeliefs,
-    dryStrategy,
-    selectedOutcome,
-    visibleCommittedChanges,
-    options.gateway,
-  );
+  const narrativePacket = buildNarrativePacket(campaign, committed.state, rawDirective, dryStrategy, selectedOutcome, visibleCommittedChanges, actorActions, selectedEffects);
+  const narrative = await narrate(narrativePacket, options.gateway);
   progress(options, 'NARRATE', 'Situation report written', 'Narrative was generated from committed player-visible reality.', 'COMPLETED');
   const budgetAfter = options.gateway?.budget.snapshot() ?? budgetBefore;
   const spent = usageDelta(budgetBefore, budgetAfter);
@@ -416,6 +422,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
   const nextMemories = updateActorMemories(campaign, actorActions, committed.changes, committed.state, auditId);
   const audit: TurnAudit = {
     auditVersion: 2,
+    hashVersion: 2,
     id: `audit_${campaign.state.campaignId}_${committed.state.turn}`,
     campaignId: campaign.state.campaignId,
     turn: committed.state.turn,
@@ -458,12 +465,21 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     progressEvents,
     actorSimulationPackets: actorSimulation.packets,
     accessDecisions: buildAccessDecisionMatrix(committed.state),
+    detectionRecords: detection.records,
+    narrativePacket,
   };
+  const narrativeCharacters = [...campaign.narrativeCharacters, ...narrative.newCharacters.map((character) => ({ ...character, introducedTurn: committed.state.turn, memories: [] }))].slice(-6);
+  const threadMap = new Map(campaign.narrativeThreads.map((thread) => [thread.id, thread]));
+  for (const thread of narrative.storyThreadUpdates) threadMap.set(thread.id, { ...thread, updatedTurn: committed.state.turn });
   const nextCampaign: Campaign = {
     state: committed.state,
     beliefs: nextBeliefs,
     memories: nextMemories,
     audits: [...campaign.audits, audit],
+    storySummary: narrative.updatedStorySummary || campaign.storySummary,
+    narrativeCharacters,
+    narrativeThreads: [...threadMap.values()],
+    chronicle: [...campaign.chronicle, { turn: committed.state.turn, date: committed.state.dateLabel, title: narrative.title, summary: narrative.chronicleEntry }],
   };
   if (options.persist !== false && options.storage) {
     progress(options, 'PERSIST', 'Saving campaign', 'Writing structured state and audit history to IndexedDB.');

@@ -21,7 +21,7 @@ const adjudication = (targetId = 'coalition_cohesion', impactClass: Adjudication
   assumptions: [], unknowns: [], confidence: 'HIGH',
 });
 
-const narrative: TurnNarrative = { title: 'Contact Established', immediateOutcome: 'The private contact occurs.', worldReaction: 'Other actors continue their plans.', strategicConsequences: 'Coalition coordination improves modestly.', news: [], advisorReactions: [] };
+const narrative: TurnNarrative = { title: 'Contact Established', immediateOutcome: 'The private contact occurs.', worldReaction: 'Other actors continue their plans.', strategicConsequences: 'Coalition coordination improves modestly.', news: [], advisorReactions: [], detailedReport: 'The contact is recorded.', pressCoverage: [], updatedStorySummary: 'A private contact was established.', newCharacters: [], chronicleEntry: 'Private contact established.', storyThreadUpdates: [] };
 
 class RecoveryGateway implements ModelGateway {
   readonly routes = DEFAULT_MODEL_ROUTES;

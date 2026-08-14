@@ -19,8 +19,7 @@ export const JournalDrawer: React.FC<JournalDrawerProps> = ({ history, onClose }
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // Show past turns only — current turn isn't "past".
-  const past = history.slice(0, -1);
+  const past = history;
 
   return (
     <div style={{
@@ -132,6 +131,7 @@ export const JournalDrawer: React.FC<JournalDrawerProps> = ({ history, onClose }
                         borderLeft: `2px solid ${T3.line2}`, paddingLeft: T3.sp3,
                       }}>{h.statsReasoning}</p>
                     )}
+                    <p style={{ fontFamily: T3.fontProse, fontSize: T3.s13, lineHeight: 1.5, color: T3.fg1, margin: 0 }}>{h.narrative}</p>
                   </div>
                 )}
               </article>

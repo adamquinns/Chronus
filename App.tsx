@@ -1,140 +1,216 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ApiKeyGateway } from './components/ApiKeyGateway';
-import { CausalGameInterface } from './components/CausalGameInterface';
-import { Campaign } from './engine/domain';
-import { createCampaign } from './engine/scenarios';
-import { importCampaign, loadMostRecentCampaign, saveCampaign } from './engine/persistence';
-import { OpenRouterGateway } from './engine/model';
-import { Clock3, PlayCircle, RotateCcw, ShieldCheck, Upload } from 'lucide-react';
+import { ConsultCabinetModal } from './components/ConsultCabinetModal';
+import { Debrief } from './components/Debrief';
+import { GameConsole } from './components/GameConsole';
+import { JournalDrawer } from './components/JournalDrawer';
+import { ResolvingScreen } from './components/ResolvingScreen';
+import { SavedCampaignSummary, ScenarioMenu } from './components/ScenarioMenu';
+import { Campaign, TurnOption, TurnPreview, TurnProgress } from './engine/domain';
 import { generateCustomScenario } from './engine/authoring';
+import { OpenRouterGateway } from './engine/model';
+import { generateTurnOptions } from './engine/options';
+import { runTurn } from './engine/pipeline';
+import { createCampaign } from './engine/scenarios';
+import { deleteCampaign, exportCampaign, importCampaign, listCampaigns, loadCampaign, saveCampaign } from './engine/persistence';
+import { buildConsoleModel, buildHistoryModel } from './engine/viewModel';
+import { isDeveloperAuditEnabled } from './components/playerVisibility';
+import { T3 } from './theme';
 
-type Screen = 'GATEWAY' | 'MENU' | 'PLAYING';
+type Screen = 'GATEWAY' | 'MENU' | 'PLAYING' | 'RESOLVING';
+
+const download = (name: string, body: string) => {
+  const url = URL.createObjectURL(new Blob([body], { type: 'application/json' }));
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = name;
+  anchor.click();
+  URL.revokeObjectURL(url);
+};
 
 const App: React.FC = () => {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('chronus_openrouter_key') ?? '');
   const [demoMode, setDemoMode] = useState(false);
-  const [screen, setScreen] = useState<Screen>(() => localStorage.getItem('chronus_openrouter_key') ? 'MENU' : 'GATEWAY');
+  const [screen, setScreen] = useState<Screen>(() => apiKey ? 'MENU' : 'GATEWAY');
   const [campaign, setCampaign] = useState<Campaign>();
-  const [resume, setResume] = useState<Campaign>();
-  const [loading, setLoading] = useState(true);
-  const [customPrompt, setCustomPrompt] = useState('');
-  const [generatingScenario, setGeneratingScenario] = useState(false);
-  const [customError, setCustomError] = useState<string>();
-  const [importError, setImportError] = useState<string>();
-
-  useEffect(() => {
-    loadMostRecentCampaign().then(setResume).catch(console.error).finally(() => setLoading(false));
-  }, []);
+  const [sessions, setSessions] = useState<SavedCampaignSummary[]>([]);
+  const [options, setOptions] = useState<TurnOption[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(false);
+  const [directive, setDirective] = useState('');
+  const [preview, setPreview] = useState<TurnPreview>();
+  const [progress, setProgress] = useState<TurnProgress[]>([]);
+  const [pendingCampaign, setPendingCampaign] = useState<Campaign>();
+  const [error, setError] = useState<string>();
+  const [journalOpen, setJournalOpen] = useState(false);
+  const [consultOpen, setConsultOpen] = useState(false);
+  const [consultAdvisorId, setConsultAdvisorId] = useState<string>();
+  const [generating, setGenerating] = useState(false);
+  const [developerOpen, setDeveloperOpen] = useState(false);
+  const [developerTurn, setDeveloperTurn] = useState(0);
 
   const gateway = useMemo(() => apiKey && !demoMode ? new OpenRouterGateway(apiKey, undefined, {
-    maxUsd: 2.5,
-    maxRequests: 14,
-    maxInputTokens: 90_000,
-    maxOutputTokens: 30_000,
+    maxUsd: 3,
+    maxRequests: 18,
+    maxInputTokens: 120_000,
+    maxOutputTokens: 40_000,
   }) : undefined, [apiKey, demoMode, campaign?.state.turn]);
+  const developerEnabled = isDeveloperAuditEnabled(import.meta.env.DEV, import.meta.env.VITE_ENABLE_DEVELOPER_AUDIT);
+
+  const refreshSessions = async () => setSessions((await listCampaigns()).filter((item) => ['cuban_missile_crisis_black_saturday', 'american_twilight'].some((scenarioId) => item.id.startsWith(scenarioId === 'cuban_missile_crisis_black_saturday' ? 'cmc_' : scenarioId)) || ['Midnight in Havana', 'Twilight of the Republic'].includes(item.title)));
+  useEffect(() => { refreshSessions().catch((caught) => setError(caught instanceof Error ? caught.message : 'Could not read saved campaigns.')); }, []);
+
+  useEffect(() => {
+    if (!campaign || screen !== 'PLAYING' || campaign.state.gameOver) return;
+    let active = true;
+    setLoadingOptions(true);
+    generateTurnOptions(campaign, gateway).then((items) => { if (active) setOptions(items); })
+      .catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : 'Could not generate options.'); })
+      .finally(() => { if (active) setLoadingOptions(false); });
+    return () => { active = false; };
+  }, [campaign, gateway, screen]);
 
   const begin = async (scenarioId: string) => {
-    const next = createCampaign(scenarioId);
-    await saveCampaign(next);
-    setCampaign(next);
-    setScreen('PLAYING');
+    try {
+      const next = createCampaign(scenarioId);
+      await saveCampaign(next);
+      setCampaign(next);
+      setOptions([]);
+      setError(undefined);
+      setScreen('PLAYING');
+      await refreshSessions();
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Could not begin scenario.'); }
   };
 
-  const beginCustom = async () => {
-    if (!gateway || !customPrompt.trim() || generatingScenario) return;
-    setGeneratingScenario(true);
-    setCustomError(undefined);
+  const resume = async (id: string) => {
     try {
-      const next = await generateCustomScenario(customPrompt, gateway);
+      const next = await loadCampaign(id);
+      if (!next) throw new Error('The selected campaign no longer exists.');
+      setCampaign(next);
+      setScreen('PLAYING');
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Could not resume campaign.'); }
+  };
+
+  const resolve = async (text: string) => {
+    if (!campaign || !text.trim()) return;
+    setDirective(text.trim());
+    setPreview(undefined);
+    setProgress([]);
+    setPendingCampaign(undefined);
+    setError(undefined);
+    setScreen('RESOLVING');
+    try {
+      const result = await runTurn(campaign, text.trim(), {
+        gateway,
+        persist: true,
+        storage: { save: saveCampaign },
+        onPreview: setPreview,
+        onProgress: (item) => setProgress((current) => [...current.filter((entry) => entry.stage !== item.stage), item]),
+      });
+      setPendingCampaign(result.campaign);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Turn resolution failed.'); }
+  };
+
+  const advance = async () => {
+    if (!pendingCampaign) return;
+    setCampaign(pendingCampaign);
+    setPendingCampaign(undefined);
+    setOptions([]);
+    setScreen('PLAYING');
+    await refreshSessions();
+  };
+
+  const custom = async (prompt: string) => {
+    if (!gateway) return;
+    setGenerating(true);
+    setError(undefined);
+    try {
+      const next = await generateCustomScenario(prompt, gateway);
       await saveCampaign(next);
       setCampaign(next);
       setScreen('PLAYING');
-    } catch (error) {
-      setCustomError(error instanceof Error ? error.message : 'Custom scenario generation failed.');
-    } finally {
-      setGeneratingScenario(false);
-    }
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Custom scenario validation failed.'); }
+    finally { setGenerating(false); }
   };
 
-  const importFromFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    setImportError(undefined);
+  const importFile = async (file: File) => {
     try {
       const next = importCampaign(await file.text());
       await saveCampaign(next);
-      setResume(next);
       setCampaign(next);
       setScreen('PLAYING');
-    } catch (error) {
-      setImportError(error instanceof Error ? error.message : 'Campaign import failed.');
-    }
+      await refreshSessions();
+    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Campaign import failed.'); }
   };
 
-  if (screen === 'GATEWAY') return <ApiKeyGateway onUnlock={(key) => { setApiKey(key); setDemoMode(false); setScreen('MENU'); }} onDemo={() => { setDemoMode(true); setScreen('MENU'); }}/>;
+  if (screen === 'GATEWAY') return <ApiKeyGateway onUnlock={(key) => { setApiKey(key); setDemoMode(false); setScreen('MENU'); }} onDemo={() => { setDemoMode(true); setScreen('MENU'); }} />;
 
-  if (screen === 'PLAYING' && campaign) return <CausalGameInterface initialCampaign={campaign} gateway={gateway} onCampaignChange={setCampaign} onExit={() => setScreen('MENU')}/>;
+  if (screen === 'MENU') return <ScenarioMenu
+    sessions={sessions}
+    onSelect={begin}
+    onResume={resume}
+    onDelete={async (id) => { await deleteCampaign(id); await refreshSessions(); }}
+    onImport={importFile}
+    onCustom={custom}
+    customEnabled={Boolean(gateway)}
+    generating={generating}
+    errorMessage={error}
+    onChangeAccess={() => setScreen('GATEWAY')}
+  />;
 
-  return <div className="min-h-screen bg-gray-950 text-gray-100 flex items-center justify-center p-4">
-    <div className="w-full max-w-5xl">
-      <div className="text-center mb-10">
-        <div className="inline-flex p-3 rounded-full bg-emerald-950 border border-emerald-900 mb-4"><Clock3 className="text-emerald-400" size={34}/></div>
-        <h1 className="text-5xl font-mono font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">CHRONUS</h1>
-        <p className="text-gray-400 mt-3">A constrained causal counterfactual strategy simulator.</p>
-      </div>
-      <div className="grid md:grid-cols-3 gap-5">
-        <div className="bg-gray-900 border border-gray-700 rounded-xl p-6">
-          <div className="text-xs font-mono text-red-400 uppercase tracking-widest mb-2">Golden vertical slice</div>
-          <h2 className="text-2xl font-bold">Midnight in Havana</h2>
-          <p className="text-gray-400 mt-2">October 27, 1962. A U-2 pilot is dead, the Joint Chiefs demand action, and hidden nuclear capabilities make every assumption dangerous.</p>
-          <button onClick={() => begin('cuban_missile_crisis_black_saturday')} className="mt-6 w-full py-3 bg-emerald-600 hover:bg-emerald-500 rounded font-bold flex items-center justify-center gap-2"><PlayCircle size={19}/> Begin timeline</button>
-        </div>
-        <div className="bg-gray-900 border border-gray-700 rounded-xl p-6">
-          <div className="text-xs font-mono text-amber-400 uppercase tracking-widest mb-2">Political coalition</div>
-          <h2 className="text-2xl font-bold">The Governors’ Compact</h2>
-          <p className="text-gray-400 mt-2">Build legal, labor, business, and state resistance without authority to order any of them—or exposing the alliance too soon.</p>
-          <button onClick={() => begin('governors_compact_1975')} className="mt-6 w-full py-3 bg-amber-700 hover:bg-amber-600 rounded font-bold flex items-center justify-center gap-2"><PlayCircle size={19}/> Begin timeline</button>
-        </div>
-        <div className="bg-gray-900 border border-gray-700 rounded-xl p-6">
-          <div className="text-xs font-mono text-red-400 uppercase tracking-widest mb-2">Military campaign</div>
-          <h2 className="text-2xl font-bold">Operation Lantern</h2>
-          <p className="text-gray-400 mt-2">Command a mountain corps through logistics, hidden enemy reserves, civilian constraints, and a narrowing operational window.</p>
-          <button onClick={() => begin('operation_lantern')} className="mt-6 w-full py-3 bg-red-800 hover:bg-red-700 rounded font-bold flex items-center justify-center gap-2"><PlayCircle size={19}/> Begin timeline</button>
-        </div>
-      </div>
-      <div className="grid mt-5">
-        <div className="bg-gray-900 border border-gray-700 rounded-xl p-6">
-          <div className="text-xs font-mono text-blue-400 uppercase tracking-widest mb-2">Persistent campaign</div>
-          {loading ? <p className="text-gray-500">Checking IndexedDB…</p> : resume ? <>
-            <h2 className="text-2xl font-bold">{resume.state.manifest.title}</h2>
-            <p className="text-gray-400 mt-2">Turn {resume.state.turn} · {resume.state.dateLabel}</p>
-            <button onClick={() => { setCampaign(resume); setScreen('PLAYING'); }} className="mt-6 w-full py-3 bg-blue-700 hover:bg-blue-600 rounded font-bold flex items-center justify-center gap-2"><RotateCcw size={18}/> Resume campaign</button>
-          </> : <p className="text-gray-500">No saved campaign found on this device.</p>}
-        </div>
-      </div>
-      <div className="mt-5 bg-gray-900 border border-gray-700 rounded-xl p-6">
-        <div className="text-xs font-mono text-cyan-400 uppercase tracking-widest mb-2">Recovery</div>
-        <h2 className="text-2xl font-bold">Import a campaign</h2>
-        <p className="text-gray-400 mt-2">Restore a validated Chronus export, including authoritative state, beliefs, actor memory, and audit history.</p>
-        <input id="campaign-import" aria-label="Campaign file" type="file" accept="application/json,.json" onChange={importFromFile} className="sr-only"/>
-        <label htmlFor="campaign-import" className="mt-4 w-full py-3 bg-cyan-800 hover:bg-cyan-700 rounded font-bold flex items-center justify-center gap-2 cursor-pointer"><Upload size={18}/> Import campaign file</label>
-        {importError && <p role="alert" className="mt-2 text-sm text-red-400">{importError}</p>}
-      </div>
-      <div className="mt-5 bg-gray-900 border border-purple-900/50 rounded-xl p-6">
-        <div className="text-xs font-mono text-purple-400 uppercase tracking-widest mb-2">Validated custom scenario</div>
-        <h2 className="text-2xl font-bold">Create another divergence</h2>
-        <p className="text-gray-400 mt-2">Describe a historical or fictional starting point, the role you want to occupy, and the central problem. AI proposes the package; Chronus validates it before play.</p>
-        <textarea aria-label="Custom scenario premise" value={customPrompt} onChange={(event) => setCustomPrompt(event.target.value)} rows={3} placeholder="What if Napoleon won at Waterloo? Put me in the role of…" className="mt-4 w-full bg-black border border-gray-700 rounded p-3 text-sm focus:border-purple-500 focus:outline-none"/>
-        {customError && <p className="mt-2 text-sm text-red-400">{customError}</p>}
-        <button onClick={beginCustom} disabled={!gateway || !customPrompt.trim() || generatingScenario} className="mt-3 w-full py-3 bg-purple-700 hover:bg-purple-600 disabled:opacity-40 rounded font-bold">
-          {generatingScenario ? 'Researching and validating scenario…' : 'Generate validated scenario'}
-        </button>
-        {!gateway && <p className="mt-2 text-xs text-amber-500">Custom scenario generation requires OpenRouter access.</p>}
-      </div>
-      <div className="mt-6 flex items-start gap-3 bg-black/30 border border-gray-800 rounded p-4 text-sm text-gray-500"><ShieldCheck className="text-emerald-500 shrink-0" size={18}/> Models interpret and challenge. Only the deterministic state engine can commit reality. Every mechanical change retains an attributable cause.</div>
-      <button onClick={() => setScreen('GATEWAY')} className="block mx-auto mt-5 text-xs text-gray-600 hover:text-gray-400">Change API access mode</button>
+  if (!campaign) return null;
+
+  if (screen === 'RESOLVING') return <ResolvingScreen
+    directive={directive}
+    preview={preview}
+    progress={progress}
+    resolved={Boolean(pendingCampaign)}
+    error={error}
+    onAdvance={advance}
+    onRetry={() => resolve(directive)}
+    onAbort={() => setScreen('PLAYING')}
+  />;
+
+  const model = buildConsoleModel(campaign, options);
+  const history = buildHistoryModel(campaign);
+  if (campaign.state.gameOver && model.goalResult) return <Debrief
+    result={model.goalResult}
+    history={history}
+    finalTurn={model}
+    campaign={campaign}
+    hasNextGoal={Boolean(campaign.state.goal.successors?.length)}
+    onReplay={() => begin(campaign.state.manifest.id)}
+    onNewScenario={() => setScreen('MENU')}
+  />;
+
+  return <>
+    <GameConsole
+      turn={model}
+      historyCount={history.length}
+      anyOverlayOpen={journalOpen || consultOpen || developerOpen}
+      onCommit={({ choiceText }) => resolve(choiceText)}
+      onOpenJournal={() => setJournalOpen(true)}
+      onOpenConsult={(advisorId) => { setConsultAdvisorId(advisorId); setConsultOpen(true); }}
+    />
+    <div style={{ position: 'fixed', right: 12, bottom: 72, zIndex: T3.zSticky, display: 'flex', gap: 6 }}>
+      <button onClick={() => download(`chronus-${campaign.state.campaignId}.json`, exportCampaign(campaign))} style={utilityButton}>Export</button>
+      {developerEnabled && <button onClick={() => setDeveloperOpen(true)} style={utilityButton}>Developer audit</button>}
+      <button onClick={() => { setScreen('MENU'); refreshSessions().catch(console.error); }} style={utilityButton}>Timelines</button>
     </div>
+    {loadingOptions && <div aria-live="polite" style={{ position: 'fixed', left: 12, bottom: 72, zIndex: T3.zSticky, color: T3.fg3, fontSize: T3.s11 }}>Preparing strategic options…</div>}
+    {journalOpen && <JournalDrawer history={history} onClose={() => setJournalOpen(false)} />}
+    {consultOpen && <ConsultCabinetModal turn={model} campaign={campaign} gateway={gateway} initialAdvisorId={consultAdvisorId} onClose={() => setConsultOpen(false)} />}
+    {developerOpen && <DeveloperAudit campaign={campaign} selected={developerTurn} onSelect={setDeveloperTurn} onClose={() => setDeveloperOpen(false)} />}
+  </>;
+};
+
+const utilityButton: React.CSSProperties = { background: T3.bg2, color: T3.fg2, border: `1px solid ${T3.line2}`, borderRadius: T3.r1, padding: '6px 9px', cursor: 'pointer', fontSize: T3.s10 };
+
+const DeveloperAudit: React.FC<{ campaign: Campaign; selected: number; onSelect: (index: number) => void; onClose: () => void }> = ({ campaign, selected, onSelect, onClose }) => {
+  const audit = campaign.audits[selected] ?? campaign.audits.at(-1);
+  return <div style={{ position: 'fixed', inset: 0, zIndex: T3.zModal, background: T3.bg0, color: T3.fg1, padding: T3.sp5, overflow: 'auto', fontFamily: T3.fontMono }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: T3.sp3 }}><strong style={{ color: T3.neg }}>DEVELOPER MODE — FULL SPOILER AUDIT</strong><button onClick={onClose} style={utilityButton}>Close</button></div>
+    <div style={{ display: 'flex', gap: 6, margin: `${T3.sp4} 0`, flexWrap: 'wrap' }}>{campaign.audits.map((item, index) => <button key={item.id} onClick={() => onSelect(index)} style={{ ...utilityButton, color: index === selected ? T3.sig : T3.fg2 }}>Turn {item.turn}</button>)}</div>
+    {audit ? <pre style={{ whiteSpace: 'pre-wrap', fontSize: T3.s10 }}>{JSON.stringify(audit, null, 2)}</pre> : <p>No committed audits yet.</p>}
   </div>;
 };
 

@@ -7,6 +7,7 @@ import {
   VisibilityRule,
   WorldState,
 } from './domain';
+import { snapshotHash } from './audit';
 import { canAccess, visibility } from './visibility';
 
 const visibilityIssue = (
@@ -110,6 +111,7 @@ export const validateScenario = (campaign: Campaign): ValidationIssue[] => {
   for (const rule of state.manifest.authorityRules) {
     if (!state.entities[rule.actorId] || !state.entities[rule.targetId]) issues.push({ code: 'AUTHORITY_ENTITY', severity: 'ERROR', message: `Authority rule references an unknown actor or target.`, path: 'manifest.authorityRules' });
     if (!rule.mechanismKinds.length) issues.push({ code: 'AUTHORITY_SCOPE', severity: 'ERROR', message: `Authority rule ${rule.actorId} → ${rule.targetId} has no mechanism scope.`, path: 'manifest.authorityRules' });
+    for (const [index, condition] of (rule.conditionRules ?? []).entries()) issues.push(...validateGoalCondition(state, condition, `manifest.authorityRules.${rule.actorId}.${rule.targetId}.conditionRules.${index}`));
   }
   if (!state.manifest.authorityRules.some((rule) => rule.actorId === state.manifest.playerId && rule.targetId === state.manifest.playerId && rule.mode === 'DIRECT')) {
     issues.push({ code: 'PLAYER_AUTHORITY', severity: 'ERROR', message: 'Player has no coherent direct self-authority rule.', path: 'manifest.authorityRules' });
@@ -118,10 +120,41 @@ export const validateScenario = (campaign: Campaign): ValidationIssue[] => {
     if (!state.manifest.authorityRules.some((rule) => rule.actorId === entity.id && rule.targetId === entity.id)) issues.push({ code: 'ACTOR_AUTHORITY', severity: 'ERROR', message: `${entity.name} has no explicit self-authority scope.`, path: 'manifest.authorityRules' });
   }
   issues.push(...validateCalibration(state.manifest.calibrationRules));
+  for (const rule of state.manifest.calibrationRules) {
+    if (rule.targetId && !(rule.targetId in state.metrics) && !state.resources[rule.targetId] && !state.entities[rule.targetId] && !state.relationships[rule.targetId] && !state.arcs[rule.targetId] && !state.facts[rule.targetId]) {
+      issues.push({ code: 'CALIBRATION_TARGET', severity: 'ERROR', message: `${rule.id} references missing calibration target ${rule.targetId}.`, path: `manifest.calibrationRules.${rule.id}` });
+    }
+  }
+  for (const [role, metricId] of Object.entries(state.manifest.metricRoles ?? {})) {
+    if (metricId && !(metricId in state.metrics)) issues.push({ code: 'METRIC_ROLE_TARGET', severity: 'ERROR', message: `Metric role ${role} references missing metric ${metricId}.`, path: `manifest.metricRoles.${role}` });
+  }
+  for (const rule of state.manifest.executableHardRules ?? []) {
+    if (!rule.id.trim() || !rule.description.trim()) issues.push({ code: 'HARD_RULE_INERT', severity: 'ERROR', message: 'Executable hard rules require an id and description.', path: 'manifest.executableHardRules' });
+    for (const actorId of rule.actorIds ?? []) if (!state.entities[actorId]) issues.push({ code: 'HARD_RULE_ACTOR', severity: 'ERROR', message: `${rule.id} references missing actor ${actorId}.`, path: `manifest.executableHardRules.${rule.id}` });
+    for (const targetId of rule.targetIds ?? []) if (!state.entities[targetId]) issues.push({ code: 'HARD_RULE_TARGET', severity: 'ERROR', message: `${rule.id} references missing target ${targetId}.`, path: `manifest.executableHardRules.${rule.id}` });
+    if (rule.effect === 'REQUIRE_RESOURCE' && (!rule.resourceId || !state.resources[rule.resourceId])) issues.push({ code: 'HARD_RULE_RESOURCE', severity: 'ERROR', message: `${rule.id} requires a missing resource.`, path: `manifest.executableHardRules.${rule.id}` });
+    if (rule.effect === 'REQUIRE_CAPABILITY' && !rule.capabilityPattern) issues.push({ code: 'HARD_RULE_CAPABILITY', severity: 'ERROR', message: `${rule.id} has no capability pattern.`, path: `manifest.executableHardRules.${rule.id}` });
+    for (const [index, condition] of (rule.conditions ?? []).entries()) issues.push(...validateGoalCondition(state, condition, `manifest.executableHardRules.${rule.id}.conditions.${index}`));
+  }
+  if (state.manifest.hardRules.length && !(state.manifest.executableHardRules?.length)) issues.push({ code: 'HARD_RULES_DOCUMENTARY_ONLY', severity: 'WARNING', message: 'Scenario has documentary hard rules but no executable hard rules.', path: 'manifest.hardRules' });
   for (const analog of state.manifest.historicalAnalogs) {
     if (!analog.sourceRefs.length) issues.push({ code: 'ANALOG_SOURCE', severity: 'ERROR', message: `${analog.id} has no source reference.`, path: 'manifest.historicalAnalogs' });
   }
   if (!state.manifest.unresolvedUncertainties.length) issues.push({ code: 'SCENARIO_UNCERTAINTY', severity: 'ERROR', message: 'Scenario must identify unresolved starting uncertainty.', path: 'manifest.unresolvedUncertainties' });
+  if (['cuban_missile_crisis_black_saturday', 'american_twilight'].includes(state.manifest.id) && state.manifest.executableHardRules?.length) {
+    const world = state.manifest.narrativeWorld;
+    if (!world || !world.sourceMaterialRef || world.openingScene.split(/\s+/).length < 100 || !world.canonicalContext.length || !world.artifactFormats.length) {
+      issues.push({ code: 'NARRATIVE_WORLD_INCOMPLETE', severity: 'ERROR', message: 'Supported scenarios require a sourced, substantial Narrative World Model.', path: 'manifest.narrativeWorld' });
+    } else {
+      const narrativeText = JSON.stringify(world).toLowerCase();
+      for (const fact of Object.values(state.facts).filter((candidate) => !canAccess(candidate.visibility, state.manifest.playerId, state.manifest.playerId, state.gameOver))) {
+        if (fact.statement.length > 24 && narrativeText.includes(fact.statement.toLowerCase())) issues.push({ code: 'NARRATIVE_WORLD_LEAK', severity: 'ERROR', message: `Narrative world exposes hidden fact ${fact.id}.`, path: 'manifest.narrativeWorld' });
+      }
+    }
+    if (state.manifest.advisors.length < 2 || state.manifest.advisors.some((advisor) => !advisor.voice || !advisor.personalStakes || !advisor.recurringTension)) {
+      issues.push({ code: 'ADVISOR_CHARACTER_INCOMPLETE', severity: 'ERROR', message: 'Supported scenarios require fully characterized recurring advisors.', path: 'manifest.advisors' });
+    }
+  }
 
   const holders = [beliefs.player, ...Object.values(beliefs.actors)];
   for (const holder of holders) {
@@ -166,6 +199,10 @@ export const migrateCampaign = (input: Campaign): Campaign => {
   const raw = structuredClone(input) as Campaign & { state: WorldState & { schemaVersion: number }; memories?: Campaign['memories'] };
   if (raw.state.schemaVersion === 2) {
     raw.memories ??= Object.fromEntries(Object.keys(raw.state.entities).map((actorId) => [actorId, { actorId, events: [], historicalPriorWeight: 1 }]));
+    raw.storySummary ??= '';
+    raw.narrativeCharacters ??= [];
+    raw.narrativeThreads ??= [];
+    raw.chronicle ??= raw.audits.map((audit) => ({ turn: audit.turn, date: audit.committedStateSnapshot?.dateLabel ?? `Turn ${audit.turn}`, title: audit.narrative.title, summary: audit.narrative.chronicleEntry ?? audit.narrative.immediateOutcome }));
     raw.state.manifest.unresolvedUncertainties ??= ['This migrated scenario did not explicitly record unresolved uncertainty.'];
     raw.state.manifest.timeScaleRules ??= [];
     for (const arc of Object.values(raw.state.arcs)) arc.participantIds ??= [...new Set([...(arc.ownerId ? [arc.ownerId] : []), raw.state.manifest.playerId])];
@@ -180,12 +217,25 @@ export const migrateCampaign = (input: Campaign): Campaign => {
       legacyAudit.progressEvents ??= [];
       legacyAudit.actorSimulationPackets ??= [];
       legacyAudit.accessDecisions ??= [];
+      legacyAudit.detectionRecords ??= [];
+      legacyAudit.narrative.detailedReport ??= legacyAudit.narrative.immediateOutcome;
+      legacyAudit.narrative.pressCoverage ??= [];
+      legacyAudit.narrative.updatedStorySummary ??= '';
+      legacyAudit.narrative.newCharacters ??= [];
+      legacyAudit.narrative.chronicleEntry ??= legacyAudit.narrative.immediateOutcome;
+      legacyAudit.narrative.storyThreadUpdates ??= [];
       legacyAudit.counterfactualBranches ??= [];
       legacyAudit.disagreement ??= { compared: false, material: false, severityScore: 0, differences: [], response: 'NONE' };
       legacyAudit.previousMemorySnapshot ??= structuredClone(raw.memories);
       legacyAudit.committedMemorySnapshot ??= structuredClone(raw.memories);
       legacyAudit.auditVersion ??= 2;
-      if (!legacyAudit.previousStateSnapshot || !legacyAudit.committedStateSnapshot) legacyAudit.legacyIncomplete = true;
+      if (!legacyAudit.previousStateSnapshot || !legacyAudit.committedStateSnapshot) {
+        legacyAudit.legacyIncomplete = true;
+      } else if (legacyAudit.hashVersion !== 2) {
+        legacyAudit.previousStateHash = snapshotHash(legacyAudit.previousStateSnapshot);
+        legacyAudit.committedStateHash = snapshotHash(legacyAudit.committedStateSnapshot);
+        legacyAudit.hashVersion = 2;
+      }
     }
     return raw;
   }
@@ -231,15 +281,21 @@ export const migrateCampaign = (input: Campaign): Campaign => {
     process.participantIds ??= [...new Set([process.ownerId, playerId])];
   }
   raw.memories = Object.fromEntries(Object.keys(raw.state.entities).map((actorId) => [actorId, { actorId, events: [], historicalPriorWeight: 1 }]));
+  raw.storySummary = '';
+  raw.narrativeCharacters = [];
+  raw.narrativeThreads = [];
+  raw.chronicle = [];
   ensureActorAuthority(raw.state);
   for (const audit of raw.audits) {
     const legacyAudit = audit as TurnAuditCompat;
     legacyAudit.auditVersion = 2;
+    legacyAudit.hashVersion = 2;
     legacyAudit.legacyIncomplete = true;
     legacyAudit.modelCalls = [];
     legacyAudit.progressEvents = [];
     legacyAudit.actorSimulationPackets = [];
     legacyAudit.accessDecisions = [];
+    legacyAudit.detectionRecords = [];
     legacyAudit.counterfactualBranches = [];
     legacyAudit.disagreement = { compared: false, material: false, severityScore: 0, differences: [], response: 'NONE' };
     legacyAudit.previousMemorySnapshot = structuredClone(raw.memories);
@@ -248,7 +304,8 @@ export const migrateCampaign = (input: Campaign): Campaign => {
   return raw;
 };
 
-type TurnAuditCompat = Campaign['audits'][number] & {
+type TurnAuditCompat = Omit<Campaign['audits'][number], 'hashVersion'> & {
   auditVersion?: 2;
+  hashVersion?: 2;
   legacyIncomplete?: boolean;
 };

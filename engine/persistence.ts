@@ -123,6 +123,10 @@ export const rollbackCampaign = (campaign: Campaign, committedTurn: number): Cam
       beliefs: structuredClone(first.previousBeliefSnapshot),
       memories: structuredClone(first.previousMemorySnapshot),
       audits: [],
+      storySummary: '',
+      narrativeCharacters: [],
+      narrativeThreads: [],
+      chronicle: [],
     };
   }
   const audit = campaign.audits.find((candidate) => candidate.turn === committedTurn);
@@ -132,6 +136,10 @@ export const rollbackCampaign = (campaign: Campaign, committedTurn: number): Cam
     beliefs: structuredClone(audit.committedBeliefSnapshot),
     memories: structuredClone(audit.committedMemorySnapshot),
     audits: campaign.audits.filter((candidate) => candidate.turn <= committedTurn),
+    storySummary: audit.narrative.updatedStorySummary || campaign.storySummary,
+    narrativeCharacters: campaign.narrativeCharacters.filter((character) => character.introducedTurn <= committedTurn),
+    narrativeThreads: campaign.narrativeThreads.filter((thread) => thread.updatedTurn <= committedTurn),
+    chronicle: campaign.chronicle.filter((entry) => entry.turn <= committedTurn),
   };
 };
 

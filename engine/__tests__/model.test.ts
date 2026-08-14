@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { OpenRouterGateway, providerStrictJsonSchema } from '../model';
+import { adjudicationSchema } from '../schemas';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -9,6 +10,10 @@ describe('content-addressed model cache', () => {
     const schema = providerStrictJsonSchema(z.toJSONSchema(z.object({ required: z.string(), optional: z.number().optional() })) as Record<string, unknown>);
     expect(schema.required).toEqual(['required', 'optional']);
     expect((schema.properties as Record<string, { anyOf?: unknown[] }>).optional.anyOf).toHaveLength(2);
+  });
+  it('keeps the adjudication schema compatible with providers that reject oneOf', () => {
+    const schema = providerStrictJsonSchema(z.toJSONSchema(adjudicationSchema) as Record<string, unknown>);
+    expect(JSON.stringify(schema)).not.toContain('"oneOf"');
   });
   it('shares identical in-flight structured calls', async () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({

@@ -1,11 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { T3 } from '../theme';
 import { Label, Speaker, Button } from './ui/Primitives';
-import { consultAdvisor, ConsultExchange } from '../services/geminiService';
 import { TurnData } from '../types';
+import { Campaign } from '../engine/domain';
+import { ModelGateway } from '../engine/model';
+import { consultAdvisors } from '../engine/advisors';
 
 interface ConsultCabinetModalProps {
   turn: TurnData;
+  campaign: Campaign;
+  gateway?: ModelGateway;
   initialAdvisorId?: string;
   onClose: () => void;
 }
@@ -13,7 +17,7 @@ interface ConsultCabinetModalProps {
 type Turn = { q: string; a: string | null; loading: boolean; error: string | null };
 
 export const ConsultCabinetModal: React.FC<ConsultCabinetModalProps> = ({
-  turn, initialAdvisorId, onClose,
+  turn, campaign, gateway, initialAdvisorId, onClose,
 }) => {
   const [activeId, setActiveId] = useState<string | null>(initialAdvisorId ?? null);
   const [question, setQuestion] = useState('');
@@ -39,13 +43,10 @@ export const ConsultCabinetModal: React.FC<ConsultCabinetModalProps> = ({
     const idx = turns.length;
     setTurns(t => [...t, { q, a: null, loading: true, error: null }]);
 
-    // Build the conversation history *up to but not including* this question.
-    const priorExchanges: ConsultExchange[] = turns
-      .filter(t => t.a !== null)
-      .map(t => ({ q: t.q, a: t.a! }));
-
     try {
-      const answer = await consultAdvisor(active, turn, priorExchanges, q);
+      const assessments = await consultAdvisors(campaign, q, gateway);
+      const answer = assessments.find((assessment) => assessment.advisorId === active.id)?.assessment
+        ?? `${active.name} has no further assessment.`;
       setTurns(t => {
         const next = [...t];
         next[idx] = { q, a: answer, loading: false, error: null };
@@ -70,12 +71,10 @@ export const ConsultCabinetModal: React.FC<ConsultCabinetModalProps> = ({
       next[idx] = { ...next[idx], loading: true, error: null };
       return next;
     });
-    const priorExchanges: ConsultExchange[] = turns
-      .slice(0, idx)
-      .filter(t => t.a !== null)
-      .map(t => ({ q: t.q, a: t.a! }));
     try {
-      const answer = await consultAdvisor(active, turn, priorExchanges, failed.q);
+      const assessments = await consultAdvisors(campaign, failed.q, gateway);
+      const answer = assessments.find((assessment) => assessment.advisorId === active.id)?.assessment
+        ?? `${active.name} has no further assessment.`;
       setTurns(t => {
         const next = [...t];
         next[idx] = { q: failed.q, a: answer, loading: false, error: null };

@@ -85,6 +85,7 @@ export const createCoalitionCampaign = (seed = Date.now()): Campaign => {
     beliefOverrides: [],
   };
   const campaign = initializeScenarioDraft(draft, seed);
+  campaign.state.manifest.metricRoles = { cohesion: 'coalition_cohesion', support: 'public_support', legal: 'legal_position', oppositionMomentum: 'federal_momentum', exposure: 'exposure_risk' };
   campaign.state.arcs.coalition_fracture.onResolve = [effect('fracture_cohesion', 'coalition_fracture', 'METRIC', 'coalition_cohesion', 'value', 'NEGATIVE', 'SEVERE', 'The labor-business coalition fractured after accumulated distrust.')];
   campaign.state.goal.successors = [{
     on: 'FAILED',
@@ -161,6 +162,7 @@ export const createMilitaryCampaign = (seed = Date.now()): Campaign => {
     beliefOverrides: [],
   };
   const campaign = initializeScenarioDraft(draft, seed);
+  campaign.state.manifest.metricRoles = { cohesion: 'combat_readiness', oppositionMomentum: 'enemy_pressure', intelligence: 'intelligence_quality' };
   campaign.state.pendingProcesses.bridge_maintenance = {
     id: 'bridge_maintenance', label: 'Stone River Bridge Maintenance', ownerId: 'corps_command', dueTurn: 4,
     progress: 0, requiredProgress: 100, participantIds: ['corps_command', 'civil_authority'], detectableBy: ['corps_command', 'civil_authority'], visibility: visible('corps_command'), completed: false,

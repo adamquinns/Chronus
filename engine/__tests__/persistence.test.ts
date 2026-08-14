@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { reconstructCommittedTurn } from '../audit';
 import { exportCampaign, importCampaign, rollbackCampaign } from '../persistence';
 import { runTurn } from '../pipeline';
 import { createCubanCampaign } from '../scenarios';
@@ -9,6 +10,7 @@ describe('structured persistence, migration, and recovery', () => {
     const result = await runTurn(createCubanCampaign(301), 'Allocate 1 reconnaissance sortie.', { persist: false });
     const restored = importCampaign(exportCampaign(result.campaign));
     expect(restored).toEqual(result.campaign);
+    expect(reconstructCommittedTurn(restored.audits[0]).state).toEqual(restored.state);
   });
 
   it('rolls back to an exact committed snapshot without retaining future audits', async () => {

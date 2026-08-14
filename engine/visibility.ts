@@ -88,6 +88,7 @@ export const projectChangesForViewer = (
       change.sourceEffectId.includes(mechanism.id));
     return [{
       id: change.id,
+      sourceEffectId: change.sourceEffectId,
       targetType: change.targetType,
       label: label ?? 'Observable development',
       field: change.field,

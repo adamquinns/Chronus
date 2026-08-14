@@ -11,7 +11,8 @@ export type ModelRole =
   | 'narrator'
   | 'validator'
   | 'scenario_architect'
-  | 'scenario_researcher';
+  | 'scenario_researcher'
+  | 'option_generator';
 
 export interface ModelRoute {
   model: string;
@@ -29,10 +30,11 @@ export const DEFAULT_MODEL_ROUTES: ModelRoutes = {
   actor_deep: { model: 'anthropic/claude-sonnet-5', temperature: 0.2, maxTokens: 2400, timeoutMs: 60_000 },
   adjudicator: { model: 'openai/gpt-5.6-terra', temperature: 0.1, maxTokens: 6000, timeoutMs: 90_000 },
   deep_second_opinion: { model: 'anthropic/claude-fable-5', temperature: 0.1, maxTokens: 6000, timeoutMs: 75_000 },
-  narrator: { model: 'openai/gpt-5.6-luna', temperature: 0.4, maxTokens: 1800, timeoutMs: 45_000 },
+  narrator: { model: 'anthropic/claude-sonnet-5', temperature: 0.5, maxTokens: 3200, timeoutMs: 75_000 },
   validator: { model: 'openai/gpt-5.6-luna', temperature: 0, maxTokens: 1600, timeoutMs: 45_000 },
   scenario_architect: { model: 'openai/gpt-5.6-terra', temperature: 0.15, maxTokens: 9000, timeoutMs: 120_000 },
   scenario_researcher: { model: 'anthropic/claude-sonnet-5', temperature: 0.1, maxTokens: 5000, timeoutMs: 90_000 },
+  option_generator: { model: 'openai/gpt-5.6-luna', temperature: 0.4, maxTokens: 1200, timeoutMs: 45_000 },
 };
 
 export interface BudgetPolicy {
@@ -129,10 +131,10 @@ export class OpenRouterGateway implements ModelGateway {
   constructor(
     private readonly apiKey: string,
     readonly routes: ModelRoutes = DEFAULT_MODEL_ROUTES,
-    policy: BudgetPolicy = { maxUsd: 1, maxRequests: 12, maxInputTokens: 60_000, maxOutputTokens: 20_000 },
+    policy: BudgetPolicy | ModelBudget = { maxUsd: 1, maxRequests: 12, maxInputTokens: 60_000, maxOutputTokens: 20_000 },
   ) {
     if (!apiKey) throw new Error('OpenRouter API key is required.');
-    this.budget = new ModelBudget(policy);
+    this.budget = policy instanceof ModelBudget ? policy : new ModelBudget(policy);
   }
 
   async callJson<T>(role: ModelRole, messages: ModelMessage[], schema: z.ZodType<T>, name: string): Promise<ModelCallResult<T>> {

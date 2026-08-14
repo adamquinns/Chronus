@@ -47,6 +47,22 @@ export interface AuthorityRule {
   mechanismKinds: StrategyMechanism['kind'][];
   mode: ControlMode;
   conditions: string[];
+  conditionRules?: GoalCondition[];
+}
+
+export interface ExecutableHardRule {
+  id: Id;
+  description: string;
+  appliesTo: 'PLAYER' | 'ACTOR' | 'ALL';
+  mechanismKinds?: StrategyMechanism['kind'][];
+  actorIds?: Id[];
+  targetIds?: Id[];
+  conditions?: GoalCondition[];
+  effect: 'PROHIBIT' | 'REQUIRE_RESOURCE' | 'REQUIRE_CAPABILITY' | 'DELAY';
+  resourceId?: Id;
+  resourceAmount?: number;
+  capabilityPattern?: string;
+  delayTurns?: number;
 }
 
 export interface TimeScale {
@@ -91,6 +107,12 @@ export interface AdvisorState {
   relationship: number;
   actorId?: Id;
   visibility: VisibilityRule;
+  biography?: string;
+  voice?: string;
+  speechHabits?: string[];
+  personalStakes?: string;
+  relationships?: string[];
+  recurringTension?: string;
 }
 
 export interface MetricDefinition {
@@ -130,6 +152,28 @@ export interface EntityState {
   privateFacts: Id[];
   visibility: VisibilityRule;
   fieldVisibility: Partial<Record<'objectives' | 'capabilities' | 'constraints' | 'power' | 'resolve' | 'status', VisibilityRule>>;
+  counterintelligence?: number;
+}
+
+export interface NarrativeVoice {
+  era: string;
+  tone: string;
+  diction: string[];
+  textureNotes: string[];
+  forbiddenCliches: string[];
+}
+
+export interface NarrativeWorldModel {
+  sourceMaterialRef: string;
+  canonicalContext: string[];
+  playerContext: string[];
+  immediateHistory: string[];
+  locations: string[];
+  institutions: string[];
+  narrativeGuidance: string[];
+  storyPossibilities: string[];
+  openingScene: string;
+  artifactFormats: string[];
 }
 
 export interface RelationshipState {
@@ -222,6 +266,7 @@ export interface ScenarioManifest {
   playerId: Id;
   playerRole: string;
   startingDate: string;
+  timeZone?: string;
   timeUnit: TimeUnit;
   timeScale: TimeScale;
   timeScaleRules: TimeScaleRule[];
@@ -231,8 +276,12 @@ export interface ScenarioManifest {
   calibrationRules: ScenarioCalibrationRule[];
   historicalAnalogs: HistoricalAnalog[];
   hardRules: string[];
+  executableHardRules?: ExecutableHardRule[];
   advisors: AdvisorState[];
   unresolvedUncertainties: string[];
+  metricRoles?: Partial<Record<'escalation' | 'support' | 'cohesion' | 'oppositionMomentum' | 'legal' | 'exposure' | 'intelligence', Id>>;
+  voice?: NarrativeVoice;
+  narrativeWorld?: NarrativeWorldModel;
 }
 
 export interface WorldState {
@@ -321,6 +370,7 @@ export interface StrategyMechanism {
   durationTurns: number;
   resourceClaims: Array<{ resourceId: Id; amount: number }>;
   specifiedDetail: string;
+  concealed?: boolean;
 }
 
 export interface StrategyGraph {
@@ -362,6 +412,21 @@ export interface ActorAction {
   beliefKeysUsed: string[];
   capabilityIdsUsed: string[];
   confidence: Confidence;
+  initiative?: boolean;
+  targetIds?: Id[];
+  resourceClaims?: Array<{ resourceId: Id; amount: number }>;
+}
+
+export interface DetectionRecord {
+  id: Id;
+  turn: number;
+  actorId: Id;
+  mechanismId: Id;
+  source: 'STRATEGY' | 'PROCESS';
+  probability: number;
+  draw: number;
+  detected: boolean;
+  garbled: boolean;
 }
 
 export interface EffectRecommendation {
@@ -478,6 +543,7 @@ export interface ValidationIssue {
 
 export interface TurnAudit {
   auditVersion: 2;
+  hashVersion: 2;
   legacyIncomplete?: boolean;
   id: Id;
   campaignId: Id;
@@ -521,6 +587,8 @@ export interface TurnAudit {
   progressEvents: TurnProgress[];
   actorSimulationPackets: ActorSimulationAudit[];
   accessDecisions: AccessDecision[];
+  detectionRecords: DetectionRecord[];
+  narrativePacket?: NarrativePacket;
 }
 
 export interface TurnNarrative {
@@ -530,6 +598,50 @@ export interface TurnNarrative {
   strategicConsequences: string;
   news: Array<{ source: string; headline: string }>;
   advisorReactions: Array<{ actorId: Id; name: string; reaction: string }>;
+  detailedReport: string;
+  pressCoverage: Array<{ source: string; headline: string; body: string }>;
+  updatedStorySummary: string;
+  newCharacters: Array<{ name: string; role: string }>;
+  chronicleEntry: string;
+  storyThreadUpdates: Array<{ id: Id; title: string; status: string; summary: string }>;
+}
+
+export interface NarrativeCharacter {
+  name: string;
+  role: string;
+  introducedTurn: number;
+  memories: string[];
+}
+
+export interface NarrativeThread {
+  id: Id;
+  title: string;
+  status: string;
+  summary: string;
+  updatedTurn: number;
+}
+
+export interface ChronicleEntry {
+  turn: number;
+  date: string;
+  title: string;
+  summary: string;
+}
+
+export interface NarrativePacket {
+  scenarioContext: Partial<NarrativeWorldModel>;
+  rawDirective: string;
+  compiledStrategy: StrategyGraph;
+  selectedOutcome: OutcomeBand;
+  visibleChanges: unknown[];
+  visibleActorEvents: Array<{ actorName: string; action: string }>;
+  advisors: Array<Pick<AdvisorState, 'id' | 'actorId' | 'name' | 'worldview' | 'bias' | 'voice' | 'personalStakes'>>;
+  recentNarratives: Array<{ title: string; immediateOutcome: string }>;
+  storySoFar: string;
+  recurringCharacters: NarrativeCharacter[];
+  activeThreads: NarrativeThread[];
+  continuingUncertainty: string[];
+  voice?: NarrativeVoice;
 }
 
 export interface Campaign {
@@ -537,6 +649,10 @@ export interface Campaign {
   beliefs: BeliefState;
   memories: Record<Id, ActorMemoryState>;
   audits: TurnAudit[];
+  storySummary: string;
+  narrativeCharacters: NarrativeCharacter[];
+  narrativeThreads: NarrativeThread[];
+  chronicle: ChronicleEntry[];
 }
 
 export interface TurnProgress {
@@ -565,6 +681,14 @@ export interface TurnPreview {
   advisorAssessments: string[];
   intelligenceNotes: string[];
   strategicTradeoffs: string[];
+}
+
+export interface TurnOption {
+  id: Id;
+  label: string;
+  directiveText: string;
+  rationale: string;
+  tradeoff: string;
 }
 
 export interface AdvisorAssessment {

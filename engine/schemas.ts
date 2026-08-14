@@ -17,6 +17,7 @@ export const mechanismSchema = z.object({
   durationTurns: z.number().int().min(0).max(12),
   resourceClaims: z.array(z.object({ resourceId: z.string(), amount: z.number().nonnegative() })),
   specifiedDetail: z.string(),
+  concealed: z.boolean().default(false),
 });
 
 export const strategyGraphSchema = z.object({
@@ -48,6 +49,9 @@ export const actorActionsSchema = z.object({
     beliefKeysUsed: z.array(z.string()),
     capabilityIdsUsed: z.array(z.string()),
     confidence,
+    initiative: z.boolean().optional(),
+    targetIds: z.array(z.string()).optional(),
+    resourceClaims: z.array(z.object({ resourceId: z.string(), amount: z.number().nonnegative() })).optional(),
   })).max(8),
 });
 
@@ -81,9 +85,14 @@ export const effectSchema = z.object({
   ]).optional(),
 });
 
-const adjudicationEffectSchema = effectSchema.extend({
+const adjudicationEffectBase = effectSchema.omit({ targetType: true, field: true }).extend({
   cause: z.union([z.string(), z.array(z.string())]).default(''),
   dependencies: z.union([z.array(z.string()), z.string()]).default([]),
+});
+
+const adjudicationEffectSchema = adjudicationEffectBase.extend({
+  targetType: z.enum(['METRIC', 'RESOURCE', 'ENTITY', 'RELATIONSHIP', 'ARC', 'FACT', 'PROCESS']),
+  field: z.enum(['value', 'amount', 'power', 'resolve', 'status', 'alignment', 'trust', 'leverage', 'commitments', 'progress', 'statement', 'discover']),
 });
 
 export const adjudicationSchema = z.object({
@@ -118,6 +127,12 @@ export const narrativeSchema = z.object({
   strategicConsequences: z.string(),
   news: z.array(z.object({ source: z.string(), headline: z.string() })).max(5),
   advisorReactions: z.array(z.object({ actorId: z.string(), name: z.string(), reaction: z.string() })).max(4),
+  detailedReport: z.string().max(3200),
+  pressCoverage: z.array(z.object({ source: z.string(), headline: z.string(), body: z.string().max(700) })).max(3),
+  updatedStorySummary: z.string().max(2000),
+  newCharacters: z.array(z.object({ name: z.string(), role: z.string() })).max(4),
+  chronicleEntry: z.string().max(800),
+  storyThreadUpdates: z.array(z.object({ id: z.string(), title: z.string(), status: z.string(), summary: z.string() })).max(6),
 });
 
 export const validationSchema = z.object({
@@ -127,6 +142,10 @@ export const validationSchema = z.object({
     message: z.string(),
     path: z.string().optional(),
   })).max(20),
+});
+
+export const turnOptionsSchema = z.object({
+  options: z.array(z.object({ id: z.string(), label: z.string(), directiveText: z.string(), rationale: z.string(), tradeoff: z.string() })).min(3).max(5),
 });
 
 const visibilityDraftSchema = z.object({
@@ -175,6 +194,12 @@ export const scenarioDraftSchema = z.object({
   historicalAnalogs: z.array(z.object({ id: z.string(), label: z.string(), mechanismKind: mechanismSchema.shape.kind, targetId: z.string(), impactClass: impact, context: z.string(), provenance: z.enum(['VERIFIED_FACT', 'WELL_SUPPORTED_INFERENCE', 'CONTESTED_INTERPRETATION', 'SCENARIO_ABSTRACTION']), sourceRefs: z.array(z.string()) })).max(10),
   advisors: z.array(z.object({ id: z.string(), name: z.string(), expertise: z.array(z.string()), worldview: z.string(), bias: z.string(), relationship: z.number().min(0).max(100), actorId: z.string().optional() })).max(6),
   unresolvedUncertainties: z.array(z.string()).min(1).max(20),
+  voice: z.object({ era: z.string(), tone: z.string(), diction: z.array(z.string()), textureNotes: z.array(z.string()), forbiddenCliches: z.array(z.string()) }).optional(),
+  narrativeWorld: z.object({
+    sourceMaterialRef: z.string(), canonicalContext: z.array(z.string()), playerContext: z.array(z.string()), immediateHistory: z.array(z.string()),
+    locations: z.array(z.string()), institutions: z.array(z.string()), narrativeGuidance: z.array(z.string()), storyPossibilities: z.array(z.string()),
+    openingScene: z.string(), artifactFormats: z.array(z.string()),
+  }).optional(),
   beliefOverrides: z.array(z.object({
     actorId: z.string(), subjectId: z.string(), field: z.string(), estimate: z.number().optional(),
     range: z.array(z.number()).length(2).optional(), categorical: z.string().optional(), confidence,

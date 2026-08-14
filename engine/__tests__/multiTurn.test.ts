@@ -3,7 +3,7 @@ import { Campaign } from '../domain';
 import { reconstructCommittedTurn } from '../audit';
 import { runTurn } from '../pipeline';
 import { createCoalitionCampaign, createMilitaryCampaign } from '../curatedScenarios';
-import { createCubanCampaign } from '../scenarios';
+import { createCubanCampaign, createTwilightCampaign } from '../scenarios';
 import { validateScenario } from '../scenario';
 
 const runScript = async (initial: Campaign, directives: string[]) => {
@@ -38,6 +38,20 @@ describe('mandatory multi-turn regression suites', () => {
     expect(campaign.audits).toHaveLength(15);
     expect(campaign.state.facts.federal_grant_threat.visibility.actorIds).not.toContain('organizer');
     expect(campaign.audits.at(-1)!.precedents.some((item) => item.source === 'INTERNAL')).toBe(true);
+  });
+
+  it('keeps Twilight of the Republic coherent through its full 12-turn horizon', async () => {
+    const directives = [
+      'Contact the civil-rights coalition and recruit governors privately.',
+      'File a narrow injunction in federal court.',
+      'Coordinate a private state resilience compact.',
+      'Announce a public defense of lawful election administration.',
+    ];
+    const campaign = await runScript(createTwilightCampaign(106), Array.from({ length: 12 }, (_, index) => directives[index % directives.length]));
+    expect(campaign.audits).toHaveLength(12);
+    expect(campaign.audits.flatMap((audit) => audit.actorActions).filter((action) => action.initiative).length).toBeGreaterThanOrEqual(2);
+    expect(campaign.audits.flatMap((audit) => audit.stateChanges).some((change) => change.cause.includes('acts on its own initiative'))).toBe(true);
+    expect(campaign.chronicle).toHaveLength(12);
   });
 
   it('preserves military logistics, force capability, hidden reserves, and delayed arcs for 12 turns', async () => {

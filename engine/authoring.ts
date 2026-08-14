@@ -176,7 +176,7 @@ export const initializeScenarioDraft = (draftInput: ScenarioDraft, seed = Date.n
     currentStrategy: entity.objectives[0],
     historicalPriorWeight: 1,
   }]));
-  const campaign: Campaign = { state, beliefs, memories, audits: [] };
+  const campaign: Campaign = { state, beliefs, memories, audits: [], storySummary: '', narrativeCharacters: [], narrativeThreads: [], chronicle: [] };
   assertValidScenario(campaign);
   return campaign;
 };

@@ -22,7 +22,7 @@ const goalValue = (state: WorldState, condition: GoalCondition): unknown => {
   return undefined;
 };
 
-const conditionMet = (state: WorldState, condition: GoalCondition) => {
+export const conditionMet = (state: WorldState, condition: GoalCondition) => {
   const actual = goalValue(state, condition);
   if (condition.operator === 'EXISTS') return actual !== undefined;
   if (condition.operator === 'NOT_EXISTS') return actual === undefined;
@@ -130,7 +130,7 @@ const applyNumeric = (
   min = 0,
   max = 100,
 ) => {
-  const magnitude = calibratedMagnitude(effect.impactClass, effect.confidence, state, targetId);
+  const magnitude = calibratedMagnitude(effect.impactClass, effect.confidence, state, targetId, effect.targetType);
   const delta = numericDirection(effect) * magnitude;
   return { after: clamp(before + delta, min, max), delta };
 };
@@ -173,7 +173,7 @@ export const commitEffects = (
       if (!resource || effect.field !== 'amount') continue;
       const before = resource.amount;
       const explicit = (effect as ProposedEffect).proposedDelta;
-      const magnitude = explicit ?? calibratedMagnitude(effect.impactClass, effect.confidence, state, effect.targetId);
+      const magnitude = explicit ?? calibratedMagnitude(effect.impactClass, effect.confidence, state, effect.targetId, effect.targetType);
       const delta = explicit ?? numericDirection(effect) * magnitude;
       resource.amount = Math.max(0, before + delta);
       record(effect, before, resource.amount, resource.amount - before);

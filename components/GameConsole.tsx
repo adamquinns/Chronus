@@ -61,12 +61,10 @@ export const GameConsole: React.FC<GameConsoleProps> = ({
     return () => window.removeEventListener('keydown', handler);
   }, [turn.choices, anyOverlayOpen]);
 
-  const statEntries = [
-    { key: 'stability',        label: turn.manifest.statsConfig.stabilityLabel,    value: turn.stats.stability,        delta: turn.statsDelta.stability },
-    { key: 'wealth',           label: turn.manifest.statsConfig.wealthLabel,       value: turn.stats.wealth,           delta: turn.statsDelta.wealth },
-    { key: 'support',          label: turn.manifest.statsConfig.supportLabel,      value: turn.stats.support,          delta: turn.statsDelta.support },
-    { key: 'primaryStatValue', label: turn.manifest.statsConfig.primaryStatLabel,  value: turn.stats.primaryStatValue, delta: turn.statsDelta.primaryStatValue },
-  ];
+  const statEntries = turn.metricDisplays.slice(0, 6).map((metric) => ({
+    key: metric.id, label: metric.label, value: metric.value, display: metric.display,
+    delta: metric.delta, confidence: metric.confidence, danger: metric.danger,
+  }));
 
   const selectedChoice = turn.choices.find(c => c.id === selectedChoiceId) || null;
 
@@ -134,7 +132,7 @@ export const GameConsole: React.FC<GameConsoleProps> = ({
 // ─── Laptop layout ─────────────────────────────────────────────────────
 interface ViewProps {
   turn: TurnData;
-  statEntries: Array<{ key: string; label: string; value: number; delta: number }>;
+  statEntries: Array<{ key: string; label: string; value: number; display: string; delta: number; confidence: string; danger: boolean }>;
   selectedChoice: Choice | null;
   selectedChoiceId: string | null;
   expandedChoiceId: string | null;
@@ -164,14 +162,14 @@ const Laptop: React.FC<ViewProps> = ({
     <header style={{
       borderBottom: `1px solid ${T3.line1}`, background: T3.bg1,
       padding: `${T3.sp3} ${T3.sp6}`,
-      display: 'grid', gridTemplateColumns: '1fr auto auto', alignItems: 'center', gap: T3.sp7,
+      display: 'grid', gridTemplateColumns: 'minmax(190px, 0.7fr) minmax(360px, 1.2fr) minmax(440px, 1fr)', alignItems: 'center', gap: T3.sp5,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: T3.sp4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: T3.sp4, minWidth: 0 }}>
         <div style={{ width: 10, height: 10, background: T3.sig, borderRadius: 1 }} aria-hidden="true" />
         <div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: T3.sp3 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: T3.sp3, minWidth: 0 }}>
             <span style={{ fontSize: T3.s15, fontWeight: 600, color: T3.fg0, letterSpacing: '-0.01em' }}>Chronus</span>
-            <span style={{ fontSize: T3.s12, color: T3.fg3 }}>/ {turn.eventTitle}</span>
+            <span style={{ fontSize: T3.s12, color: T3.fg3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>/ {turn.eventTitle}</span>
           </div>
           <div style={{
             fontSize: T3.s11, color: T3.fg3, letterSpacing: '0.08em',
@@ -182,7 +180,7 @@ const Laptop: React.FC<ViewProps> = ({
 
       <div style={{
         display: 'flex', alignItems: 'center', gap: T3.sp6,
-        paddingRight: T3.sp6, borderRight: `1px solid ${T3.line1}`,
+        paddingRight: T3.sp5, borderRight: `1px solid ${T3.line1}`, flexWrap: 'wrap', minWidth: 0,
       }}>
         <div>
           <Label>Turn</Label>
@@ -194,13 +192,13 @@ const Laptop: React.FC<ViewProps> = ({
             <span style={{ color: T3.fg3, fontSize: T3.s13 }}> / {turn.currentGoal.totalTurns}</span>
           </div>
         </div>
-        <div style={{ maxWidth: 340 }}>
+        <div style={{ flex: '1 1 220px', minWidth: 0 }}>
           <Label>Objective</Label>
           <div style={{ fontSize: T3.s13, color: T3.fg1, lineHeight: 1.35, marginTop: 2 }}>
             {turn.currentGoal.description}
           </div>
         </div>
-        <Chip tone="sig">{turn.currentGoal.turnsRemaining} {turn.manifest.timeUnit} remain</Chip>
+        <Chip tone="sig">{turn.currentGoal.turnsRemaining} decision windows remain</Chip>
         {historyCount > 1 && (
           <button
             onClick={onOpenJournal}
@@ -213,9 +211,9 @@ const Laptop: React.FC<ViewProps> = ({
         )}
       </div>
 
-      <div style={{ display: 'grid', gridAutoFlow: 'column', gap: T3.sp5 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(90px, 1fr))', gap: `${T3.sp3} ${T3.sp5}`, minWidth: 0 }}>
         {statEntries.map(s => (
-          <div key={s.key} style={{ minWidth: 110 }}>
+          <div key={s.key} style={{ minWidth: 0 }}>
             <div style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4,
             }}>
@@ -229,7 +227,7 @@ const Laptop: React.FC<ViewProps> = ({
               <span style={{
                 fontSize: T3.s19, fontWeight: 600, color: T3.fg0,
                 fontVariantNumeric: 'tabular-nums', lineHeight: 1,
-              }}>{s.value}</span>
+              }}>{s.display}</span>
               <span style={{ fontSize: T3.s11, color: T3.fg3 }}>/ 100</span>
             </div>
             <div style={{ marginTop: 6 }}>
@@ -318,6 +316,9 @@ const Laptop: React.FC<ViewProps> = ({
           ))}
         </article>
 
+        <NarrativeDepth turn={turn} />
+        <CausalChanges turn={turn} />
+
         {turn.news.length > 0 && (
           <div style={{
             borderTop: `1px solid ${T3.line1}`, borderBottom: `1px solid ${T3.line1}`,
@@ -368,10 +369,10 @@ const Laptop: React.FC<ViewProps> = ({
               <h2 style={{
                 fontFamily: T3.fontProse, fontSize: T3.s28, fontWeight: 400,
                 color: T3.fg0, margin: `4px 0 0`, letterSpacing: '-0.015em',
-              }}>Four options on the table.</h2>
+              }}>{turn.choices.length} options on the table.</h2>
             </div>
             <span style={{ fontSize: T3.s11, color: T3.fg3 }}>
-              Press A–D · Esc to clear
+              Press A–{String.fromCharCode(64 + turn.choices.length)} · Esc to clear
             </span>
           </div>
 
@@ -405,7 +406,7 @@ const Laptop: React.FC<ViewProps> = ({
                 ? <>Selected: <span style={{ color: T3.fg1 }}>{selectedChoice.text}</span></>
                 : customDirective.trim()
                   ? <>Custom directive drafted · {customDirective.trim().split(/\s+/).length} words</>
-                  : 'Select a directive (A–D) or draft your own.'}
+                  : `Select a directive (A–${String.fromCharCode(64 + turn.choices.length)}) or draft your own.`}
             </div>
             <div style={{ display: 'flex', gap: T3.sp2 }}>
               <Button onClick={onOpenConsult}>Consult Cabinet</Button>
@@ -522,7 +523,7 @@ const Mobile: React.FC<MobileProps> = ({
           fontSize: T3.s11, color: T3.sig, fontFamily: T3.fontMono,
           whiteSpace: 'nowrap', paddingTop: 14,
         }}>
-          {turn.currentGoal.turnsRemaining} {turn.manifest.timeUnit.toLowerCase().slice(0, 1)} left
+          {turn.currentGoal.turnsRemaining} windows left
         </span>
       </div>
     </div>
@@ -541,7 +542,7 @@ const Mobile: React.FC<MobileProps> = ({
             <span style={{
               fontSize: T3.s17, fontWeight: 600, color: T3.fg0,
               fontVariantNumeric: 'tabular-nums', lineHeight: 1,
-            }}>{s.value}</span>
+            }}>{s.display}</span>
             <span style={{ fontSize: T3.s11, color: T3.fg3 }}>/100</span>
           </div>
           <div style={{ marginTop: 3 }}>
@@ -575,6 +576,8 @@ const Mobile: React.FC<MobileProps> = ({
             }}>{p}</p>
           ))}
         </article>
+        <NarrativeDepth turn={turn} />
+        <CausalChanges turn={turn} />
       </section>
 
       {turn.news.length > 0 && (
@@ -623,7 +626,7 @@ const Mobile: React.FC<MobileProps> = ({
         <h2 style={{
           fontFamily: T3.fontProse, fontSize: T3.s22, fontWeight: 400,
           color: T3.fg0, margin: `4px 0 ${T3.sp4}`, letterSpacing: '-0.01em',
-        }}>Four options on the table.</h2>
+        }}>{turn.choices.length} options on the table.</h2>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: T3.sp3 }}>
           {turn.choices.map((c, i) => (
@@ -757,6 +760,29 @@ const Mobile: React.FC<MobileProps> = ({
     )}
   </div>
 );
+
+const NarrativeDepth: React.FC<{ turn: TurnData }> = ({ turn }) => {
+  if (!turn.detailedReport && !turn.pressCoverage?.length && !turn.advisorReactions?.length) return null;
+  return <details style={{ border: `1px solid ${T3.line1}`, borderRadius: T3.r3, padding: T3.sp4, background: T3.bg1 }}>
+    <summary style={{ color: T3.fg1, cursor: 'pointer', fontSize: T3.s12, fontWeight: 600 }}>Open full situation report</summary>
+    {turn.detailedReport && <p style={{ fontFamily: T3.fontProse, fontSize: T3.s14, lineHeight: 1.6, color: T3.fg1, whiteSpace: 'pre-wrap' }}>{turn.detailedReport}</p>}
+    {turn.advisorReactions?.map((reaction) => <blockquote key={`${reaction.actorId}-${reaction.name}`} style={{ borderLeft: `2px solid ${T3.sigLine}`, margin: `${T3.sp3} 0`, paddingLeft: T3.sp3, fontFamily: T3.fontProse, color: T3.fg2 }}><strong style={{ color: T3.fg0 }}>{reaction.name}:</strong> {reaction.reaction}</blockquote>)}
+    {turn.pressCoverage?.map((item) => <article key={`${item.source}-${item.headline}`} style={{ borderTop: `1px solid ${T3.line1}`, paddingTop: T3.sp3, marginTop: T3.sp3 }}><Label>{item.source}</Label><div style={{ color: T3.fg0, marginTop: 3 }}>{item.headline}</div><p style={{ color: T3.fg2, fontSize: T3.s12, lineHeight: 1.5 }}>{item.body}</p></article>)}
+  </details>;
+};
+
+const CausalChanges: React.FC<{ turn: TurnData }> = ({ turn }) => {
+  if (!turn.developments?.length) return null;
+  return <section style={{ borderLeft: `3px solid ${T3.sig}`, paddingLeft: T3.sp4 }}>
+    <Label tone="sig">Causal ledger · observable changes</Label>
+    <div style={{ marginTop: T3.sp2, display: 'flex', flexDirection: 'column', gap: T3.sp2 }}>
+      {turn.developments.map((change) => <div key={change.id} style={{ fontSize: T3.s12, color: T3.fg2 }}>
+        <strong style={{ color: T3.fg0 }}>{change.label}</strong> · {String(change.before)} → {String(change.after)}
+        <div style={{ color: T3.fg3, marginTop: 2 }}>{change.cause}</div>
+      </div>)}
+    </div>
+  </section>;
+};
 
 const quickNavStyle: CSSProperties = {
   textAlign: 'left',

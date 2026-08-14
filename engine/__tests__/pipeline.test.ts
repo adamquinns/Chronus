@@ -5,6 +5,32 @@ import { retrievePrecedents } from '../precedent';
 import { compileDeterministically } from '../compiler';
 import { reconstructCommittedTurn } from '../audit';
 import { rollbackCampaign } from '../persistence';
+import { z } from 'zod';
+import { Adjudication, ModelCallResult, ModelCallTrace, TurnNarrative } from '../domain';
+import { DEFAULT_MODEL_ROUTES, ModelBudget, ModelGateway, ModelMessage, ModelRole } from '../model';
+
+class PinningGateway implements ModelGateway {
+  readonly routes = DEFAULT_MODEL_ROUTES;
+  readonly budget = new ModelBudget({ maxUsd: 10, maxRequests: 100, maxInputTokens: 100_000, maxOutputTokens: 100_000 });
+  readonly records: Array<{ role: ModelRole; name: string; messages: ModelMessage[] }> = [];
+  traceCount() { return this.records.length; }
+  tracesSince(index: number): ModelCallTrace[] { return this.records.slice(index).map((record, offset) => ({ id: `pin_${index + offset}`, role: record.role, model: 'test/model', schemaName: record.name, startedAt: '', completedAt: '', status: 'SUCCEEDED', messages: record.messages, rawText: '{}', usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } })); }
+  async callJson<T>(role: ModelRole, messages: ModelMessage[], _schema: z.ZodType<T>, name: string): Promise<ModelCallResult<T>> {
+    this.records.push({ role, name, messages: structuredClone(messages) });
+    const graph = compileDeterministically('Contact Khrushchev through the diplomatic backchannel.', createCubanCampaign(1).state);
+    const adjudication: Adjudication = { summary: 'No immediate mechanical effect.', mechanismFindings: graph.mechanisms.map((mechanism) => ({ mechanismId: mechanism.id, engagement: 'ENGAGES', reason: 'A channel exists.', confidence: 'HIGH' })), recommendedEffects: [], outcomeBands: [{ id: 'observed', label: 'Channel tested', probability: 1, effectIds: [], description: 'No immediate state change is observed.' }], assumptions: [], unknowns: [], confidence: 'HIGH' };
+    const narrative: TurnNarrative = { title: 'A Channel Tested', immediateOutcome: 'Robert Kennedy tests the channel.', worldReaction: 'No public response is visible.', strategicConsequences: 'The situation remains unsettled.', news: [], advisorReactions: [], detailedReport: 'The private approach is made without a visible response.', pressCoverage: [], updatedStorySummary: 'A private channel was tested.', newCharacters: [], chronicleEntry: 'The channel was tested.', storyThreadUpdates: [] };
+    let value: unknown;
+    if (name === 'StrategyGraph') value = graph;
+    else if (name === 'CompilerFidelity') value = { faithful: true, inventedMechanisms: [], omittedWeaknesses: [], assumedCoordination: [], contradictions: [] };
+    else if (name === 'ActorActions') value = { actions: [] };
+    else if (name === 'RedTeamFindings') value = { findings: [] };
+    else if (name === 'Adjudication' || name === 'IndependentAdjudication') value = adjudication;
+    else if (name === 'TurnNarrative') value = narrative;
+    else throw new Error(`Unexpected schema ${name}`);
+    return { value: value as T, model: 'test/model', usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 }, rawText: JSON.stringify(value) };
+  }
+}
 
 describe('complete deterministic turn pipeline', () => {
   it('compiles, resolves, commits, narrates, and audits without an LLM oracle', async () => {
@@ -60,7 +86,7 @@ describe('complete deterministic turn pipeline', () => {
     expect(result.audit.randomDraw).toBeUndefined();
     expect(result.audit.rngCursorAfter).toBe(result.audit.rngCursorBefore);
     expect(result.audit.selectedOutcome.id).toBe('no_feasible_effect');
-    expect(result.audit.stateChanges.filter((change) => change.sourceEffectId.startsWith('e_'))).toHaveLength(0);
+    expect(result.audit.stateChanges.filter((change) => change.sourceEffectId.includes('_m1_'))).toHaveLength(0);
   });
 
   it('matures a delayed process exactly once', async () => {
@@ -87,5 +113,16 @@ describe('complete deterministic turn pipeline', () => {
     expect(first.campaign.state.pendingProcesses.test_process.completed).toBe(true);
     const second = await runTurn(first.campaign, 'Order Khrushchev to surrender immediately.', { persist: false });
     expect(second.campaign.state.metrics.diplomatic_space).toBe(afterFirst);
+  });
+
+  it('pins rhetoric to compiler, red team, and post-commit narration only', async () => {
+    const gateway = new PinningGateway();
+    const result = await runTurn(createCubanCampaign(988), 'XRHETORICX Contact Khrushchev through the diplomatic backchannel.', { gateway, persist: false });
+    const protectedRoles = new Set<ModelRole>(['adjudicator', 'actor_standard', 'actor_deep', 'deep_second_opinion', 'validator']);
+    for (const trace of result.audit.modelCalls.filter((item) => protectedRoles.has(item.role as ModelRole))) {
+      expect(JSON.stringify(trace.messages)).not.toContain('XRHETORICX');
+    }
+    expect(gateway.records.some((record) => record.name === 'RedTeamFindings' && JSON.stringify(record.messages).includes('XRHETORICX'))).toBe(true);
+    expect(gateway.records.some((record) => record.name === 'TurnNarrative' && JSON.stringify(record.messages).includes('XRHETORICX'))).toBe(true);
   });
 });

@@ -6,6 +6,7 @@ import {
   ValidationIssue,
   WorldState,
 } from './domain';
+import { conditionMet } from './state';
 
 const allowedFields: Record<Adjudication['recommendedEffects'][number]['targetType'], Set<string>> = {
   METRIC: new Set(['value']),
@@ -28,6 +29,32 @@ export const validateActorActions = (
   if (!actor) return [{ code: 'ACTOR_ACTION_UNKNOWN', severity: 'ERROR' as const, message: `Action references unknown actor ${action.actorId}.` }];
   for (const capability of action.capabilityIdsUsed) {
     if (!actor.capabilities.includes(capability)) issues.push({ code: 'ACTOR_CAPABILITY_MAGIC', severity: 'ERROR', message: `${action.actorId} used undeclared capability ${capability}.` });
+  }
+  for (const targetId of action.targetIds ?? []) {
+    if (!state.entities[targetId]) issues.push({ code: 'ACTOR_TARGET_UNKNOWN', severity: 'ERROR', message: `${action.actorId} targeted unknown entity ${targetId}.` });
+    const hasChannel = Object.values(state.relationships).some((relationship) => relationship.communication
+      && ((relationship.fromId === action.actorId && relationship.toId === targetId) || (relationship.toId === action.actorId && relationship.fromId === targetId)));
+    if (!hasChannel && /contact|negotiate|message|call|letter|diplom/i.test(action.action)) issues.push({ code: 'ACTOR_COMMUNICATION_MAGIC', severity: 'ERROR', message: `${action.actorId} has no communication channel to ${targetId}.` });
+  }
+  for (const claim of action.resourceClaims ?? []) {
+    const resource = state.resources[claim.resourceId];
+    if (!resource || resource.amount < claim.amount) issues.push({ code: 'ACTOR_RESOURCE_MAGIC', severity: 'ERROR', message: `${action.actorId} lacks ${claim.amount} of ${claim.resourceId}.` });
+    else if (resource.ownerId !== action.actorId && state.entities[resource.ownerId]?.controllerId !== action.actorId) issues.push({ code: 'ACTOR_RESOURCE_AUTHORITY', severity: 'ERROR', message: `${action.actorId} does not control ${claim.resourceId}.` });
+  }
+  const selfAuthority = state.manifest.authorityRules.filter((rule) => rule.actorId === action.actorId && rule.targetId === action.actorId);
+  if (!selfAuthority.some((rule) => (rule.conditionRules ?? []).every((condition) => conditionMet(state, condition)))) {
+    issues.push({ code: 'ACTOR_AUTHORITY_MISSING', severity: 'ERROR', message: `${action.actorId} lacks currently valid authority for autonomous action.` });
+  }
+  for (const rule of (state.manifest.executableHardRules ?? []).filter((candidate) =>
+    (candidate.appliesTo === 'ALL' || candidate.appliesTo === 'ACTOR')
+    && (!candidate.actorIds?.length || candidate.actorIds.includes(action.actorId))
+    && (candidate.conditions ?? []).every((condition) => conditionMet(state, condition)))) {
+    if (rule.effect === 'PROHIBIT' && (!rule.targetIds?.length || (action.targetIds ?? []).some((targetId) => rule.targetIds!.includes(targetId)))) {
+      issues.push({ code: 'ACTOR_HARD_RULE', severity: 'ERROR', message: `${action.actorId}: ${rule.description}` });
+    }
+    if (rule.effect === 'REQUIRE_RESOURCE' && rule.resourceId && (state.resources[rule.resourceId]?.amount ?? 0) < (rule.resourceAmount ?? 1)) {
+      issues.push({ code: 'ACTOR_HARD_RESOURCE', severity: 'ERROR', message: `${action.actorId}: ${rule.description}` });
+    }
   }
   const perceived = new Set(graph.mechanisms.map((mechanism) => mechanism.id));
   for (const mechanismId of action.perceivedPlayerMechanismIds) {

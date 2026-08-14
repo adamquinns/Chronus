@@ -25,7 +25,7 @@ describe('scenario time and ongoing processes', () => {
     campaign.state.metrics.nuclear_tension = 90;
     const next = advanceScenarioTime(campaign.state);
     expect(next.elapsedMinutes).toBe(60);
-    expect(next.dateLabel).toBe('1962-10-27 18:00:00 UTC');
+    expect(next.dateLabel).toBe('October 27, 1962 at 2:00 PM GMT-4');
     expect(next.dateLabel).not.toContain('Turn');
   });
 

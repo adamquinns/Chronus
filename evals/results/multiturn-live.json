@@ -1,0 +1,171 @@
+{
+  "generatedAt": "2026-08-14T20:20:36.530Z",
+  "passed": true,
+  "scenarioId": "cuban_missile_crisis_black_saturday",
+  "seed": 19621027,
+  "turns": 12,
+  "usage": {
+    "requests": 137,
+    "inputTokens": 1081533,
+    "outputTokens": 271858,
+    "costUsd": 7.601729579999996
+  },
+  "budgetPolicy": {
+    "maxUsd": 9.5,
+    "maxRequests": 150,
+    "maxInputTokens": 1600000,
+    "maxOutputTokens": 420000
+  },
+  "modelRoutes": {
+    "strategy_compiler": {
+      "model": "openai/gpt-5.6-luna",
+      "temperature": 0.1,
+      "maxTokens": 2400,
+      "timeoutMs": 45000
+    },
+    "critic": {
+      "model": "anthropic/claude-sonnet-5",
+      "temperature": 0.15,
+      "maxTokens": 2600,
+      "timeoutMs": 60000
+    },
+    "actor_standard": {
+      "model": "openai/gpt-5.6-luna",
+      "temperature": 0.2,
+      "maxTokens": 1800,
+      "timeoutMs": 45000
+    },
+    "actor_deep": {
+      "model": "anthropic/claude-sonnet-5",
+      "temperature": 0.2,
+      "maxTokens": 2400,
+      "timeoutMs": 60000
+    },
+    "adjudicator": {
+      "model": "openai/gpt-5.6-terra",
+      "temperature": 0.1,
+      "maxTokens": 6000,
+      "timeoutMs": 90000
+    },
+    "deep_second_opinion": {
+      "model": "anthropic/claude-fable-5",
+      "temperature": 0.1,
+      "maxTokens": 6000,
+      "timeoutMs": 75000
+    },
+    "narrator": {
+      "model": "anthropic/claude-sonnet-5",
+      "temperature": 0.5,
+      "maxTokens": 3200,
+      "timeoutMs": 75000
+    },
+    "validator": {
+      "model": "openai/gpt-5.6-luna",
+      "temperature": 0,
+      "maxTokens": 1600,
+      "timeoutMs": 45000
+    },
+    "scenario_architect": {
+      "model": "openai/gpt-5.6-terra",
+      "temperature": 0.15,
+      "maxTokens": 9000,
+      "timeoutMs": 120000
+    },
+    "scenario_researcher": {
+      "model": "anthropic/claude-sonnet-5",
+      "temperature": 0.1,
+      "maxTokens": 5000,
+      "timeoutMs": 90000
+    },
+    "option_generator": {
+      "model": "openai/gpt-5.6-luna",
+      "temperature": 0.4,
+      "maxTokens": 1200,
+      "timeoutMs": 45000
+    }
+  },
+  "gates": {
+    "twelveTurnsCommitted": {
+      "passed": true,
+      "evidence": {
+        "committed": 12,
+        "turnErrors": []
+      }
+    },
+    "zeroValidationErrors": {
+      "passed": true,
+      "evidence": []
+    },
+    "calibrationStability": {
+      "passed": true,
+      "evidence": []
+    },
+    "concealedDetectionAudited": {
+      "passed": true,
+      "evidence": {
+        "draws": 84,
+        "detections": 21
+      }
+    },
+    "autonomousInitiative": {
+      "passed": true,
+      "evidence": {
+        "initiativeActions": 24,
+        "committedEffects": 25,
+        "capabilitySafe": true,
+        "perceptionSafe": true
+      }
+    },
+    "lateNarrativeQuality": {
+      "passed": true,
+      "evidence": {
+        "grades": [
+          {
+            "turn": 9,
+            "score": 0.9,
+            "specific": true,
+            "concrete": true,
+            "fillerFree": true,
+            "clicheFree": true,
+            "nonRepetitive": true,
+            "rationale": "Names RFK, Dobrynin, Khrushchev, Castro, LeMay, Anderson, and the SAM site; describes concrete actions (backchannel meeting, intercepted letter, ongoing strike preparation) and precisely distinguishes a stated offer from an agreement. No forbidden clichés appear, and the four-channel framing extends rather than repeats prior turns' content."
+          },
+          {
+            "turn": 10,
+            "score": 0.78,
+            "specific": true,
+            "concrete": true,
+            "fillerFree": true,
+            "clicheFree": true,
+            "nonRepetitive": true,
+            "rationale": "Named actors (McNamara, LeMay, RFK) and concrete procedural artifacts (photo comparison sheets, confidence judgment, NATO contact log) ground the turn, though the 'quiet alliance channel' framing is somewhat abstract. No clichés used, and the photographic-comparison thread is a genuinely new procedural strand rather than a restatement."
+          },
+          {
+            "turn": 11,
+            "score": 0.92,
+            "specific": true,
+            "concrete": true,
+            "fillerFree": true,
+            "clicheFree": true,
+            "nonRepetitive": true,
+            "rationale": "Highly specific with OPLAN 312, named officials, Pliyev, Presidium, Radio Moscow, and the new tactical-nuclear-weapons disclosure; concrete actions include readiness posture activation, assumption-list compilation, and cable/broadcast transmission. No forbidden clichés, and the nuclear-weapons revelation is a substantive new fact rather than a delta restatement."
+          },
+          {
+            "turn": 12,
+            "score": 0.85,
+            "specific": true,
+            "concrete": true,
+            "fillerFree": true,
+            "clicheFree": true,
+            "nonRepetitive": true,
+            "rationale": "Specific named actors and documents (Dobrynin cable, Radio Moscow transcript, reconnaissance photos, UN inspection log) with concrete verification steps (launcher removal, inspector access). Avoids forbidden phrases; while structurally similar to turn 11's assumption-list approach, it advances new verification criteria rather than merely restating prior metrics."
+          }
+        ]
+      }
+    },
+    "exactReconstruction": {
+      "passed": true,
+      "evidence": []
+    }
+  }
+}

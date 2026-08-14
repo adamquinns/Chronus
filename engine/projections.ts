@@ -4,6 +4,7 @@ import {
   BeliefState,
   EntityState,
   StrategyGraph,
+  StrategyMechanism,
   VisibilityRule,
   WorldState,
 } from './domain';
@@ -131,10 +132,11 @@ export const authoritativeSnapshot = (state: WorldState) => ({
   goal: state.goal,
 });
 
-export const perceivedStrategyForActor = (actorId: string, graph: StrategyGraph): StrategyGraph => {
+export const perceivedStrategyForActor = (actorId: string, graph: StrategyGraph, detected: StrategyMechanism[] = []): StrategyGraph => {
+  const detectedIds = new Set(detected.map((mechanism) => mechanism.id));
   const visible = graph.mechanisms.filter((mechanism) => {
-    if (mechanism.kind === 'DECEPTION' || mechanism.kind === 'INTELLIGENCE') {
-      return mechanism.actorIds.includes(actorId);
+    if (mechanism.concealed || mechanism.kind === 'DECEPTION' || mechanism.kind === 'INTELLIGENCE') {
+      return mechanism.actorIds.includes(actorId) || detectedIds.has(mechanism.id);
     }
     return mechanism.targetIds.includes(actorId)
       || mechanism.actorIds.includes(actorId)
@@ -143,7 +145,13 @@ export const perceivedStrategyForActor = (actorId: string, graph: StrategyGraph)
   });
   return {
     objective: visible.length ? graph.objective : 'Unknown player intent',
-    mechanisms: visible,
+    mechanisms: visible.map((mechanism) => detectedIds.has(mechanism.id) && !mechanism.actorIds.includes(actorId) ? {
+      ...mechanism,
+      objective: 'Concealed activity detected',
+      specifiedDetail: `${mechanism.kind} activity involving ${mechanism.targetIds.join(', ') || 'an unknown target'}`,
+      assumptions: [],
+      resourceClaims: [],
+    } : mechanism),
     sequencing: [],
     contingencies: [],
     explicitRisks: [],

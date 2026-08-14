@@ -26,8 +26,5 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  },
-  "exclude": [
-    "legacy-ui"
-  ]
+  }
 }

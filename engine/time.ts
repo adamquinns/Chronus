@@ -24,6 +24,9 @@ export const advanceScenarioTime = (state: WorldState): WorldState => {
   else date.setUTCMinutes(date.getUTCMinutes() + minutesFor(activeScale));
   next.currentDateTime = date.toISOString();
   next.elapsedMinutes += minutesFor(activeScale);
-  next.dateLabel = date.toISOString().replace('T', ' ').replace('.000Z', ' UTC');
+  next.dateLabel = new Intl.DateTimeFormat('en-US', {
+    timeZone: next.manifest.timeZone ?? 'UTC',
+    month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+  }).format(date);
   return next;
 };

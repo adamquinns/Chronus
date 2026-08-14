@@ -3,6 +3,8 @@ import { canAccess, visibility } from './visibility';
 import { assertValidScenario } from './scenario';
 export { createCoalitionCampaign, createMilitaryCampaign } from './curatedScenarios';
 import { createCoalitionCampaign, createMilitaryCampaign } from './curatedScenarios';
+import { createTwilightCampaign } from './twilightScenario';
+export { createTwilightCampaign } from './twilightScenario';
 
 const publicVisibility = () => visibility('PUBLIC');
 const playerVisibility = () => visibility('PLAYER_KNOWN', ['kennedy']);
@@ -35,6 +37,7 @@ export const createCubanCampaign = (seed = 19621027): Campaign => {
     playerId: 'kennedy',
     playerRole: 'President of the United States',
     startingDate: 'October 27, 1962 — 12:00 PM',
+    timeZone: 'America/New_York',
     timeUnit: 'HOURS',
     timeScale: { amount: 4, unit: 'HOURS' },
     timeScaleRules: [
@@ -51,7 +54,7 @@ export const createCubanCampaign = (seed = 19621027): Campaign => {
     ],
     authorityRules: [
       { actorId: 'kennedy', targetId: 'kennedy', mechanismKinds: ['DIRECT_ORDER', 'RESOURCE_TRANSFER', 'PUBLIC_COMMUNICATION'], mode: 'DIRECT', conditions: [] },
-      { actorId: 'kennedy', targetId: 'joint_chiefs', mechanismKinds: ['DIRECT_ORDER', 'MILITARY_OPERATION', 'INTELLIGENCE'], mode: 'DELEGATED', conditions: ['Lawful presidential command'] },
+      { actorId: 'kennedy', targetId: 'joint_chiefs', mechanismKinds: ['DIRECT_ORDER', 'MILITARY_OPERATION', 'INTELLIGENCE'], mode: 'DELEGATED', conditions: ['Civilian command-and-control remains functional'], conditionRules: [{ targetType: 'METRIC', targetId: 'command_control', field: 'value', operator: 'GTE', value: 30 }] },
       { actorId: 'kennedy', targetId: 'excomm_doves', mechanismKinds: ['DIRECT_ORDER', 'DIPLOMACY', 'INTELLIGENCE'], mode: 'DELEGATED', conditions: [] },
       { actorId: 'kennedy', targetId: 'khrushchev', mechanismKinds: ['DIPLOMACY', 'COERCION', 'PUBLIC_COMMUNICATION'], mode: 'INFLUENCE', conditions: ['Available communication channel'] },
       { actorId: 'kennedy', targetId: 'castro', mechanismKinds: ['DIPLOMACY', 'COERCION', 'PUBLIC_COMMUNICATION'], mode: 'INFLUENCE', conditions: ['Indirect or public channel'] },
@@ -73,13 +76,41 @@ export const createCubanCampaign = (seed = 19621027): Campaign => {
       'Soviet missile withdrawal requires Khrushchev authority and a viable transmission path to forces in Cuba.',
     ],
     advisors: [
-      { id: 'advisor_excomm_restraint', name: 'ExComm Restraint Bloc', expertise: ['Diplomacy', 'Escalation control'], worldview: 'Preserve options and create a negotiated exit.', bias: 'Underweights domestic demands for immediate retaliation.', relationship: 72, actorId: 'excomm_doves', visibility: playerVisibility() },
-      { id: 'advisor_joint_chiefs', name: 'Joint Chiefs of Staff', expertise: ['Military operations', 'Readiness'], worldview: 'Credible force and decisive action prevent strategic defeat.', bias: 'Underweights uncontrolled escalation and diplomatic ambiguity.', relationship: 65, actorId: 'joint_chiefs', visibility: playerVisibility() },
+      { id: 'advisor_mcnamara', name: 'Robert McNamara', expertise: ['Defense policy', 'Escalation control'], worldview: 'Preserve civilian control, quantify the ladder of escalation, and avoid steps whose consequences cannot be bounded.', bias: 'Can overestimate the ability of analysis and procedure to control frightened men and imperfect systems.', relationship: 76, actorId: 'excomm_doves', visibility: playerVisibility(), biography: 'Secretary of Defense and central ExComm participant.', voice: 'Controlled, analytical, clipped; often reframes danger as sequences and probabilities.', speechHabits: ['enumerates consequences', 'asks what happens after the next step'], personalStakes: 'Prevent a local military response from becoming an uncontrollable nuclear sequence.', recurringTension: 'Persistent conflict with LeMay and the Joint Chiefs over whether force can remain limited.' },
+      { id: 'advisor_lemay', name: 'Curtis LeMay', expertise: ['Strategic air power', 'Military readiness'], worldview: 'Failure to answer force with force invites strategic defeat and makes later war more dangerous.', bias: 'Underweights diplomatic ambiguity, local-command error, and the political impossibility of controlling retaliation.', relationship: 54, actorId: 'joint_chiefs', visibility: playerVisibility(), biography: 'Air Force Chief of Staff and the most forceful advocate for striking Cuba.', voice: 'Blunt, impatient, concrete; speaks in operational requirements and treats hesitation as a decision.', speechHabits: ['rejects euphemism', 'presses for executable orders'], personalStakes: 'Avoid an outcome he believes will leave the United States strategically humiliated.', recurringTension: 'Believes civilian restraint confuses prudence with weakness.' },
+      { id: 'advisor_rfk', name: 'Robert F. Kennedy', expertise: ['Backchannel diplomacy', 'Presidential politics'], worldview: 'A private, face-saving settlement may be possible if public positions and military clocks can be kept apart.', bias: 'May overvalue personal channels and his ability to read the President’s adversaries.', relationship: 88, actorId: 'excomm_doves', visibility: playerVisibility(), biography: 'Attorney General, presidential brother, and principal private channel to Ambassador Anatoly Dobrynin.', voice: 'Direct and personal, less bureaucratic than ExComm; speaks in terms of what another man may be able to accept.', speechHabits: ['distinguishes public from private terms', 'returns to the narrowing clock'], personalStakes: 'Protect his brother and find a settlement neither side must publicly describe as surrender.', recurringTension: 'The backchannel requires secrecy while the military demands clarity and speed.' },
     ],
     unresolvedUncertainties: [
       'Whether field commanders will interpret signaling as attack preparation.',
       'Whether a face-saving exchange can outrun military escalation pressure.',
       'How much operational control Moscow retains over forces in Cuba and at sea.',
+    ],
+    metricRoles: { escalation: 'nuclear_tension', support: 'domestic_support', cohesion: 'alliance_cohesion', intelligence: 'intelligence_quality' },
+    voice: { era: 'Cold War, October 1962', tone: 'claustrophobic, procedural, grave, historically grounded', diction: ['ExComm', 'quarantine line', 'SAM site', 'readiness', 'backchannel', 'cable traffic'], textureNotes: ['Use maps, clocks, typed memoranda, delayed cables, reconnaissance photography, naval reports, and voices carried through secure telephones.', 'Scenes should emphasize incomplete information and the separation between political intention and military procedure.'], forbiddenCliches: ['tensions rose', 'the world watched', 'history held its breath', 'a dramatic turn', 'unprecedented times'] },
+    narrativeWorld: {
+      sourceMaterialRef: 'docs/source_material/legacy-scenarios.ts.txt#cuban_crisis',
+      canonicalContext: [
+        'For nearly two weeks, US reconnaissance has confirmed Soviet medium- and intermediate-range nuclear missiles in Cuba; Kennedy has answered with a naval quarantine.',
+        'Strategic forces are at extraordinary alert. There is no Washington–Moscow hotline, and orders pass through slow, fallible channels.',
+        'ExComm is divided between military leaders pressing for air strikes and civilian advisors warning that a limited reprisal may not remain limited.',
+        'Robert Kennedy maintains a fragile private channel through Soviet Ambassador Anatoly Dobrynin.',
+        'Khrushchev wants to defend Cuba and correct the strategic imbalance but fears losing control of deployed forces and local commanders.',
+        'Castro expects invasion and resents any settlement that trades Cuban security for superpower convenience.',
+        'NATO allies fear both American weakness and being destroyed by a crisis they cannot control; Berlin and the Jupiter missiles in Turkey shadow every bargain.',
+      ],
+      playerContext: ['You are President John F. Kennedy. You can command US forces, but you cannot command Soviet, Cuban, allied, or local military interpretation.', 'You know Major Rudolf Anderson has been killed over Cuba and that pressure for retaliation is immediate.', 'You know the Dobrynin channel exists. You do not know the full tactical nuclear deployment in Cuba or aboard Soviet submarines.'],
+      immediateHistory: ['A Soviet SA-2 battery has shot down Major Rudolf Anderson Jr.’s U-2 over eastern Cuba.', 'A separate U-2 has strayed into Soviet airspace near the Arctic, prompting fighter scrambles.', 'Two different Soviet letters suggest different settlement terms.', 'US destroyers are using practice depth charges to signal a Soviet submarine near the quarantine line.'],
+      locations: ['the Cabinet Room and Oval Office', 'eastern Cuba', 'the quarantine line in the Atlantic', 'the Soviet Embassy in Washington', 'Moscow and Havana', 'Berlin and Jupiter missile sites in Turkey'],
+      institutions: ['Executive Committee of the National Security Council', 'Joint Chiefs of Staff', 'Strategic Air Command', 'Soviet Presidium', 'NATO', 'US Navy quarantine force'],
+      narrativeGuidance: ['Use institutional and operational realism over cinematic omniscience.', 'Keep hidden tactical nuclear weapons and B-59 armament out of player-facing narration until causally discovered.', 'Let military, diplomatic, and political clocks conflict.', 'Use period-appropriate cables, memoranda, radio reports, and television bulletins.'],
+      storyPossibilities: ['Kennedy–LeMay disagreement may sharpen if retaliation is delayed.', 'The Dobrynin backchannel may create a settlement that cannot be stated publicly.', 'A local military incident may outrun political instructions.', 'Alliance concerns over Berlin or Turkey may constrain an otherwise workable Cuba bargain.'],
+      openingScene: 'Saturday, October 27, 1962 — noon. The Cabinet Room smells of coffee, cigarette smoke, and damp wool. Reconnaissance photographs cover the table beside the first report of Major Rudolf Anderson Jr.’s death over Cuba. General Curtis LeMay wants the responsible SAM site destroyed before delay looks like paralysis. Robert McNamara asks who controls the rung after retaliation—and whether anyone in this room can promise the answer.\n\nRobert Kennedy has word that Ambassador Anatoly Dobrynin may still carry a private proposal to Moscow: a non-invasion assurance, perhaps something unstated about the obsolete Jupiter missiles in Turkey. It is a route out, but not one the alliance or the Joint Chiefs can safely watch being negotiated. Before the President answers, an aide enters with an incomplete report: another American U-2 has strayed across the Soviet frontier near the Arctic, and fighters on both sides are moving.\n\nYou are President John F. Kennedy. Your objective is to remove the offensive missiles without allowing local incidents, military timetables, or public commitments to decide the war for you. You know what is on this table. You do not know every weapon already in Cuba, every order aboard the submarines below the quarantine line, or how firmly Moscow controls the men holding them. The next four hours belong to you only in part.',
+      artifactFormats: ['White House memorandum', 'CIA intelligence cable', 'AP or UPI bulletin', 'CBS television report', 'Radio Moscow broadcast', 'Navy contact report', 'diplomatic telegram'],
+    },
+    executableHardRules: [
+      { id: 'cmc_recon_capacity', description: 'Reconnaissance tasking requires an available reconnaissance sortie.', appliesTo: 'PLAYER', mechanismKinds: ['INTELLIGENCE'], effect: 'REQUIRE_RESOURCE', resourceId: 'recon_sorties', resourceAmount: 1 },
+      { id: 'cmc_command_control', description: 'US military operations cannot be initiated after civilian command-and-control has collapsed.', appliesTo: 'PLAYER', mechanismKinds: ['MILITARY_OPERATION'], conditions: [{ targetType: 'METRIC', targetId: 'command_control', field: 'value', operator: 'LT', value: 30 }], effect: 'PROHIBIT' },
+      { id: 'cmc_soviet_withdrawal', description: 'The United States cannot directly order Soviet missile withdrawal.', appliesTo: 'PLAYER', mechanismKinds: ['DIRECT_ORDER'], targetIds: ['khrushchev', 'soviet_cuba'], effect: 'PROHIBIT' },
     ],
   };
 
@@ -279,13 +310,14 @@ export const createCubanCampaign = (seed = 19621027): Campaign => {
     currentStrategy: state.entities[actorId].objectives[0],
     historicalPriorWeight: 1,
   }]));
-  const campaign: Campaign = { state, beliefs, memories, audits: [] };
+  const campaign: Campaign = { state, beliefs, memories, audits: [], storySummary: '', narrativeCharacters: [], narrativeThreads: [], chronicle: [] };
   assertValidScenario(campaign);
   return campaign;
 };
 
 export const createCampaign = (scenarioId = 'cuban_missile_crisis_black_saturday', seed?: number): Campaign => {
   if (scenarioId === 'cuban_missile_crisis_black_saturday') return createCubanCampaign(seed);
+  if (scenarioId === 'american_twilight') return createTwilightCampaign(seed);
   if (scenarioId === 'governors_compact_1975') return createCoalitionCampaign(seed);
   if (scenarioId === 'operation_lantern') return createMilitaryCampaign(seed);
   throw new Error(`Unknown scenario: ${scenarioId}`);

@@ -13,9 +13,12 @@ export const retrievePrecedents = (campaign: Campaign, graph: StrategyGraph, lim
       if (!mechanismKind || !currentKinds.has(mechanismKind)) continue;
       const actorOverlap = (actorsByMechanism.get(effect?.mechanismId ?? '') ?? []).filter((id) => currentActors.has(id)).length;
       const targetMatch = graph.mechanisms.some((mechanism) => mechanism.targetIds.includes(change.targetId));
-      const oldTension = audit.previousStateSnapshot?.metrics.nuclear_tension;
-      const currentTension = campaign.state.metrics.nuclear_tension;
-      const crisisDistance = typeof oldTension === 'number' && typeof currentTension === 'number' ? Math.abs(oldTension - currentTension) : 25;
+      const escalationId = campaign.state.manifest.metricRoles?.escalation;
+      const dangerIds = campaign.state.manifest.metricDefinitions.filter((definition) => definition.dangerAbove !== undefined || definition.dangerBelow !== undefined).map((definition) => definition.id);
+      const distances = escalationId
+        ? [Math.abs((audit.previousStateSnapshot?.metrics[escalationId] ?? campaign.state.metrics[escalationId]) - campaign.state.metrics[escalationId])]
+        : dangerIds.map((id) => Math.abs((audit.previousStateSnapshot?.metrics[id] ?? campaign.state.metrics[id]) - campaign.state.metrics[id]));
+      const crisisDistance = distances.length ? distances.reduce((sum, value) => sum + value, 0) / distances.length : 25;
       internal.push({
         source: 'INTERNAL',
         sourceId: audit.id,

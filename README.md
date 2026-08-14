@@ -21,7 +21,7 @@ player directive
 
 Campaign state, sparse beliefs, actor memory, and turn audits are stored in IndexedDB. Runtime OpenRouter access is BYOK and stored separately in the browser profile. Campaigns can be exported and restored as validated JSON packages.
 
-The build includes the **October 27, 1962 Cuban Missile Crisis** golden vertical slice, a **1975 political-coalition campaign**, a **fictional mid-century military campaign**, and validated AI-assisted custom scenario generation.
+The supported release scenarios are **Midnight in Havana**, beginning on Black Saturday during the Cuban Missile Crisis, and **Twilight of the Republic**, a speculative modern American constitutional crisis. Earlier coalition and military packages remain in the repository as non-release test fixtures and design guidance; their source narratives are preserved verbatim in `docs/source_material/legacy-scenarios.ts.txt`.
 
 ## Run locally
 
@@ -42,11 +42,19 @@ npm test
 npm run build
 ```
 
-The 53-test deterministic suite covers seeded replay, rhetoric stripping, information boundaries, authority and resource constraints, causal provenance, state validation, bounded recovery, persistence and rollback, objective continuity, custom authoring, and four 10–15-turn campaign suites.
+The 63-test deterministic suite covers seeded replay, rhetoric stripping, information boundaries, authority and resource constraints, causal provenance, state validation, bounded recovery, persistence and exact reconstruction, objective continuity, narrative safety, and sustained campaign play.
 
 ## Run behavioral evals
 
-Create `.env.local` in the repository root:
+`.env.local` is intentionally absent from Git because it contains a secret. Create it in the repository root (the same folder as `package.json`):
+
+```sh
+cd /Users/adamquinn/Documents/ChatGPT/Chronos
+touch .env.local
+open -e .env.local
+```
+
+Paste one line into the file, replacing the example with the current key, then save it:
 
 ```dotenv
 OPENROUTER_API_KEY=sk-or-v1-your-key
@@ -56,9 +64,12 @@ Then run:
 
 ```sh
 npm run eval
+npm run eval:multiturn
 ```
 
-The eval harness enforces request, token, and dollar ceilings. It runs structural gates, a faithful retired-d20 comparison, live behavioral checks, and a final aggregate gate. Machine-readable evidence is written under `evals/results/`, with the release decision in `evals/results/complete.json`. Do not prefix the key with `VITE_`; that would expose it in the browser bundle.
+The eval harness enforces request, token, and dollar ceilings. It runs structural gates, a faithful retired-d20 comparison, live behavioral checks, a final aggregate gate, and a resumable 12-turn live campaign gate. Machine-readable evidence is written under `evals/results/`. Do not prefix the key with `VITE_`; that would expose it in the browser bundle.
+
+The browser app does not read `.env.local`. Its access screen stores a runtime key only in the current browser profile; deterministic demo mode needs no key.
 
 ## Model roles
 

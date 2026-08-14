@@ -11,6 +11,7 @@ import {
 import { ModelGateway } from './model';
 import { fidelitySchema, strategyGraphSchema } from './schemas';
 import { playerVisibleState } from './projections';
+import { conditionMet } from './state';
 
 export const deRhetoricize = (directive: string) => directive
   .replace(/^(?:(?:this\s+is|behold)\s+)?my\b[^:]{0,240}\b(?:brilliant|genius|masterful|masterstroke|perfect|foolproof|guaranteed|unbeatable)\b[^:]*:\s*/i, '')
@@ -27,6 +28,7 @@ const clauses = (directive: string) => deRhetoricize(directive)
 
 const inferKind = (text: string): StrategyMechanism['kind'] => {
   if (/transfer|allocate|fund|budget|move \$|send .* supplies/i.test(text)) return 'RESOURCE_TRANSFER';
+  if (/^\s*(?:order|direct|authorize|instruct|command)\b/i.test(text)) return 'DIRECT_ORDER';
   if (/negotiate|offer|backchannel|diplom|contact|call|letter|signal .*proposal/i.test(text)) return 'DIPLOMACY';
   if (/strike|bomb|invade|deploy|attack|blockade|move .*fleet|send .*troops/i.test(text)) return 'MILITARY_OPERATION';
   if (/secret|quiet|conceal|mislead|deceiv|feint/i.test(text)) return 'DECEPTION';
@@ -36,7 +38,7 @@ const inferKind = (text: string): StrategyMechanism['kind'] => {
   if (/coalition|allies|governor|organize|recruit/i.test(text)) return 'COALITION_BUILDING';
   if (/sanction|economic|business|insurance|trade|financial/i.test(text)) return 'ECONOMIC_PRESSURE';
   if (/threat|ultimatum|coerce|pressure/i.test(text)) return 'COERCION';
-  if (/order|direct|authorize|instruct/i.test(text)) return 'DIRECT_ORDER';
+  if (/order|direct|authorize|instruct|command/i.test(text)) return 'DIRECT_ORDER';
   return 'OTHER';
 };
 
@@ -78,12 +80,14 @@ export const compileDeterministically = (directive: string, state: WorldState): 
     durationTurns: /prepare|build|recruit|develop|long.term/i.test(part) ? 2 : 1,
     resourceClaims: inferKind(part) === 'RESOURCE_TRANSFER' ? resourceClaims(part, state) : [],
     specifiedDetail: part,
+    concealed: inferKind(part) === 'DECEPTION' || /secret|quietly|privately|covert|conceal/i.test(part),
   }));
   return {
     objective: parts[0] ?? directive.trim(),
     mechanisms: mechanisms.length ? mechanisms : [{
       id: 'm1', kind: 'OTHER', objective: directive.trim(), targetIds: [], actorIds: [state.manifest.playerId],
       dependencies: [], assumptions: [], sequence: 0, durationTurns: 1, resourceClaims: [], specifiedDetail: directive.trim(),
+      concealed: /secret|quietly|privately|covert|conceal/i.test(directive),
     }],
     sequencing: mechanisms.map((item) => item.id),
     contingencies: [],
@@ -114,7 +118,7 @@ export const normalizeStrategyGraph = (graph: StrategyGraph, state: WorldState):
       if (!valid) unknownReferences.push(`Invalid resource claim “${claim.resourceId}” in mechanism ${id}.`);
       return valid;
     });
-    return { ...mechanism, id, targetIds, actorIds, resourceClaims };
+    return { ...mechanism, id, targetIds, actorIds, resourceClaims, concealed: Boolean(mechanism.concealed || mechanism.kind === 'DECEPTION') };
   });
   const ids = new Set(mechanisms.map((mechanism) => mechanism.id));
   return {
@@ -233,10 +237,11 @@ export const checkFeasibility = (graph: StrategyGraph, state: WorldState): Feasi
     let classification: FeasibilityFinding['classification'] = 'POSSIBLE';
     let availableFraction = 1;
     let unmechanizedControlRequest = false;
-    const matchingRules = state.manifest.authorityRules.filter((rule) =>
+    const scopedRules = state.manifest.authorityRules.filter((rule) =>
       rule.actorId === playerId
       && (mechanism.targetIds.includes(rule.targetId) || (!mechanism.targetIds.length && rule.targetId === playerId))
       && rule.mechanismKinds.includes(mechanism.kind));
+    const matchingRules = scopedRules.filter((rule) => (rule.conditionRules ?? []).every((condition) => conditionMet(state, condition)));
     const controlRank = { NONE: 0, INFLUENCE: 1, DELEGATED: 2, DIRECT: 3 } as const;
     const controlMode: ControlMode = matchingRules.reduce<ControlMode>((best, rule) =>
       controlRank[rule.mode] > controlRank[best] ? rule.mode : best, mechanism.targetIds.length ? 'NONE' : 'DIRECT');
@@ -246,6 +251,11 @@ export const checkFeasibility = (graph: StrategyGraph, state: WorldState): Feasi
       ? capableEntities.flatMap((entity) => entity.capabilities.filter((capability) => capabilityPattern.test(capability)))
       : capableEntities.flatMap((entity) => entity.capabilities).slice(0, 3);
     capabilityEvidence.push(...matchingRules.map((rule) => `Explicit ${rule.mode.toLowerCase()} authority for ${rule.targetId}`));
+    for (const rule of scopedRules.filter((candidate) => !matchingRules.includes(candidate))) {
+      feasible = false;
+      constraints.push(`Authority condition is not satisfied for ${rule.targetId}: ${rule.conditions.join('; ') || 'required state condition'}.`);
+      availableFraction = 0;
+    }
     const specificCapabilityChecks: Array<[RegExp, RegExp]> = [
       [/carrier|air wing/i, /carrier|air wing/i],
       [/nuclear|atomic/i, /nuclear|atomic|strategic force/i],
@@ -286,8 +296,44 @@ export const checkFeasibility = (graph: StrategyGraph, state: WorldState): Feasi
       unmechanizedControlRequest = true;
       constraints.push('The player lacks direct authority over at least one target. Interpret as a request or influence attempt.');
     }
+    if (mechanism.kind === 'DIRECT_ORDER' && mechanism.targetIds.length === 0) {
+      feasible = false;
+      unmechanizedControlRequest = true;
+      availableFraction = 0;
+      constraints.push('No authoritative target was identified for the direct order.');
+    }
     if (matchingRules.some((rule) => rule.conditions.length)) {
       reasons.push(...matchingRules.flatMap((rule) => rule.conditions.map((condition) => `Authority condition: ${condition}.`)));
+    }
+    const hardRules = (state.manifest.executableHardRules ?? []).filter((rule) =>
+      (rule.appliesTo === 'ALL' || rule.appliesTo === 'PLAYER')
+      && (!rule.actorIds?.length || rule.actorIds.includes(playerId))
+      && (!rule.mechanismKinds?.length || rule.mechanismKinds.includes(mechanism.kind))
+      && (!rule.targetIds?.length || mechanism.targetIds.some((targetId) => rule.targetIds!.includes(targetId)))
+      && (rule.conditions ?? []).every((condition) => conditionMet(state, condition)));
+    for (const rule of hardRules) {
+      if (rule.effect === 'PROHIBIT') {
+        feasible = false;
+        availableFraction = 0;
+        constraints.push(rule.description);
+      } else if (rule.effect === 'REQUIRE_RESOURCE' && rule.resourceId) {
+        const resource = state.resources[rule.resourceId];
+        if (!resource || resource.amount < (rule.resourceAmount ?? 1)) {
+          feasible = false;
+          availableFraction = 0;
+          constraints.push(rule.description);
+        }
+      } else if (rule.effect === 'REQUIRE_CAPABILITY' && rule.capabilityPattern) {
+        const pattern = new RegExp(rule.capabilityPattern, 'i');
+        if (!capableEntities.some((entity) => entity.capabilities.some((capability) => pattern.test(capability)))) {
+          feasible = false;
+          availableFraction = 0;
+          constraints.push(rule.description);
+        }
+      } else if (rule.effect === 'DELAY') {
+        classification = 'DELAYED';
+        reasons.push(rule.description);
+      }
     }
     if (mechanism.kind === 'DIPLOMACY' && mechanism.targetIds.length) {
       const reachable = mechanism.targetIds.some((targetId) => Object.values(state.relationships).some((relationship) =>
