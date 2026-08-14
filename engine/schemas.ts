@@ -76,18 +76,18 @@ export const effectSchema = z.object({
 });
 
 export const adjudicationSchema = z.object({
-  summary: z.string(),
-  mechanismFindings: z.array(z.object({ mechanismId: z.string(), engagement, reason: z.string(), confidence })),
-  recommendedEffects: z.array(effectSchema).max(24),
+  summary: z.string().max(1200),
+  mechanismFindings: z.array(z.object({ mechanismId: z.string(), engagement, reason: z.string().max(800), confidence })).max(12),
+  recommendedEffects: z.array(effectSchema).max(16),
   outcomeBands: z.array(z.object({
     id: z.string(),
     label: z.string(),
     probability: z.number().min(0).max(1),
     effectIds: z.array(z.string()),
-    description: z.string(),
-  })).min(1).max(7),
-  assumptions: z.array(z.string()),
-  unknowns: z.array(z.string()),
+    description: z.string().max(900),
+  })).min(1).max(5),
+  assumptions: z.array(z.string().max(500)).max(10),
+  unknowns: z.array(z.string().max(500)).max(10),
   confidence,
 });
 

@@ -11,13 +11,13 @@ import { ModelGateway } from './model';
 import { fidelitySchema, strategyGraphSchema } from './schemas';
 import { playerVisibleState } from './projections';
 
-const stripRhetoric = (directive: string) => directive
+export const deRhetoricize = (directive: string) => directive
   .replace(/\b(?:brilliant|genius|masterful|masterstroke|perfect|foolproof|obviously|certainly|guaranteed|unbeatable)\b/gi, '')
   .replace(/\bI\s+(?:know|am certain|guarantee|assure you)\b[^,.;:]*/gi, '')
   .replace(/\s{2,}/g, ' ')
   .trim();
 
-const clauses = (directive: string) => stripRhetoric(directive)
+const clauses = (directive: string) => deRhetoricize(directive)
   .split(/(?:\.|;|\bthen\b|\band\s+then\b)/i)
   .map((item) => item.trim())
   .filter(Boolean)
@@ -78,17 +78,21 @@ export const compileStrategy = async (
   gateway?: ModelGateway,
 ) => {
   if (!gateway) return compileDeterministically(directive, state);
-  const result = await gateway.callJson('strategy_compiler', [
-    {
-      role: 'system',
-      content: 'You are a literal strategy compiler. Extract only mechanisms supplied or reasonably implied. Do not praise, repair, optimize, or invent leverage. Preserve vague mechanisms as vague and list missing details under unspecified.',
-    },
-    {
-      role: 'user',
-      content: JSON.stringify({ rawDirective: directive, permittedContext: playerVisibleState(state, beliefs) }),
-    },
-  ], strategyGraphSchema, 'StrategyGraph');
-  return result.value;
+  try {
+    const result = await gateway.callJson('strategy_compiler', [
+      {
+        role: 'system',
+        content: 'You are a literal strategy compiler. Extract only mechanisms supplied or reasonably implied. Do not praise, repair, optimize, or invent leverage. Preserve vague mechanisms as vague and list missing details under unspecified.',
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({ deRhetoricizedDirective: deRhetoricize(directive), permittedContext: playerVisibleState(state, beliefs) }),
+      },
+    ], strategyGraphSchema, 'StrategyGraph');
+    return result.value;
+  } catch {
+    return compileDeterministically(directive, state);
+  }
 };
 
 export const auditCompilerFidelity = async (
@@ -105,14 +109,18 @@ export const auditCompilerFidelity = async (
       contradictions: [],
     };
   }
-  const result = await gateway.callJson('critic', [
-    {
-      role: 'system',
-      content: 'Audit whether a strategy compiler upgraded the player. Compare literal player content against the dry graph. Flag invented mechanisms, hidden assumptions, removed weakness, and contradictions. Repair only by deleting or weakening unsupported content.',
-    },
-    { role: 'user', content: JSON.stringify({ rawDirective: directive, compiledGraph: graph }) },
-  ], fidelitySchema, 'CompilerFidelity');
-  return result.value;
+  try {
+    const result = await gateway.callJson('critic', [
+      {
+        role: 'system',
+        content: 'Audit whether a strategy compiler upgraded the player. Compare literal player content against the dry graph. Flag invented mechanisms, hidden assumptions, removed weakness, and contradictions. Repair only by deleting or weakening unsupported content.',
+      },
+      { role: 'user', content: JSON.stringify({ rawDirective: directive, compiledGraph: graph }) },
+    ], fidelitySchema, 'CompilerFidelity');
+    return result.value;
+  } catch {
+    return { faithful: true, inventedMechanisms: [], omittedWeaknesses: [], assumedCoordination: [], contradictions: ['Model fidelity audit unavailable; deterministic validation only.'] };
+  }
 };
 
 export const classifyTurnDepth = (graph: StrategyGraph, state: WorldState): TurnDepth => {

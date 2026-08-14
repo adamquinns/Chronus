@@ -55,19 +55,21 @@ const reconcile = (primary: Adjudication, second: Adjudication): { adjudication:
 };
 
 const getSecondOpinion = async (
-  primary: Adjudication,
   campaign: Campaign,
   graph: TurnAudit['dryStrategy'],
+  feasibility: TurnAudit['feasibility'],
+  actorActions: TurnAudit['actorActions'],
+  redTeam: TurnAudit['redTeam'],
   gateway: ModelGateway,
 ) => {
   const result = await gateway.callJson('deep_second_opinion', [
     {
       role: 'system',
-      content: 'Independently adjudicate this pivotal turn. Do not defer to the first opinion. Enforce actual capabilities, information boundaries, causal mechanisms, and calibrated impact classes. Return a complete alternative adjudication.',
+      content: 'Independently adjudicate this pivotal turn. Enforce actual capabilities, information boundaries, causal mechanisms, and calibrated impact classes. You do not receive another adjudicator’s conclusion. Return a complete concise alternative adjudication.',
     },
     {
       role: 'user',
-      content: JSON.stringify({ dryStrategy: graph, authoritativeState: authoritativeSnapshot(campaign.state), firstOpinion: primary }),
+      content: JSON.stringify({ dryStrategy: graph, feasibility, actorActions, redTeam, authoritativeState: authoritativeSnapshot(campaign.state) }),
     },
   ], adjudicationSchema, 'IndependentAdjudication');
   return result.value;
@@ -96,14 +98,14 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
   const redTeam = await runRedTeam(dryStrategy, feasibility, actorActions, campaign.state, options.gateway);
 
   progress(options, 'ADJUDICATE', 'Adjudicating causal effects', 'Converting constrained judgments into bounded effect recommendations.');
-  let adjudication = sanitizeAdjudication(
-    await adjudicate(dryStrategy, feasibility, actorActions, redTeam, campaign.state, depth, options.gateway),
-    campaign.state,
-    depth,
-  );
+  const primaryPromise = adjudicate(dryStrategy, feasibility, actorActions, redTeam, campaign.state, depth, options.gateway);
+  const secondPromise = depth === 'DEEP' && options.gateway
+    ? getSecondOpinion(campaign, dryStrategy, feasibility, actorActions, redTeam, options.gateway)
+    : undefined;
+  let adjudication = sanitizeAdjudication(await primaryPromise, campaign.state, depth);
   if (depth === 'DEEP' && options.gateway) {
     try {
-      const second = sanitizeAdjudication(await getSecondOpinion(adjudication, campaign, dryStrategy, options.gateway), campaign.state, depth);
+      const second = sanitizeAdjudication(await secondPromise!, campaign.state, depth);
       const reconciled = reconcile(adjudication, second);
       adjudication = reconciled.adjudication;
       if (reconciled.finding) redTeam.push(reconciled.finding);

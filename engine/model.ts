@@ -15,19 +15,20 @@ export interface ModelRoute {
   model: string;
   temperature: number;
   maxTokens: number;
+  timeoutMs?: number;
 }
 
 export type ModelRoutes = Record<ModelRole, ModelRoute>;
 
 export const DEFAULT_MODEL_ROUTES: ModelRoutes = {
-  strategy_compiler: { model: 'openai/gpt-5-mini', temperature: 0.1, maxTokens: 2400 },
-  critic: { model: 'anthropic/claude-sonnet-4', temperature: 0.15, maxTokens: 2600 },
-  actor_standard: { model: 'google/gemini-2.5-flash', temperature: 0.25, maxTokens: 1800 },
-  actor_deep: { model: 'anthropic/claude-sonnet-4', temperature: 0.25, maxTokens: 2400 },
-  adjudicator: { model: 'openai/gpt-5', temperature: 0.1, maxTokens: 3600 },
-  deep_second_opinion: { model: 'anthropic/claude-opus-4', temperature: 0.1, maxTokens: 3000 },
-  narrator: { model: 'google/gemini-2.5-flash', temperature: 0.45, maxTokens: 1800 },
-  validator: { model: 'openai/gpt-5-mini', temperature: 0, maxTokens: 1600 },
+  strategy_compiler: { model: 'openai/gpt-5.6-luna', temperature: 0.1, maxTokens: 2400, timeoutMs: 45_000 },
+  critic: { model: 'anthropic/claude-sonnet-5', temperature: 0.15, maxTokens: 2600, timeoutMs: 60_000 },
+  actor_standard: { model: 'openai/gpt-5.6-luna', temperature: 0.2, maxTokens: 1800, timeoutMs: 45_000 },
+  actor_deep: { model: 'anthropic/claude-sonnet-5', temperature: 0.2, maxTokens: 2400, timeoutMs: 60_000 },
+  adjudicator: { model: 'openai/gpt-5.6-terra', temperature: 0.1, maxTokens: 6000, timeoutMs: 90_000 },
+  deep_second_opinion: { model: 'anthropic/claude-fable-5', temperature: 0.1, maxTokens: 6000, timeoutMs: 75_000 },
+  narrator: { model: 'openai/gpt-5.6-luna', temperature: 0.4, maxTokens: 1800, timeoutMs: 45_000 },
+  validator: { model: 'openai/gpt-5.6-luna', temperature: 0, maxTokens: 1600, timeoutMs: 45_000 },
 };
 
 export interface BudgetPolicy {
@@ -106,6 +107,7 @@ export class OpenRouterGateway implements ModelGateway {
       this.budget.assertAvailable();
       const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
+        signal: AbortSignal.timeout(route.timeoutMs ?? 90_000),
         headers: {
           Authorization: `Bearer ${this.apiKey}`,
           'Content-Type': 'application/json',
@@ -116,11 +118,19 @@ export class OpenRouterGateway implements ModelGateway {
           model: route.model,
           temperature: route.temperature,
           max_tokens: route.maxTokens,
+          seed: route.model.startsWith('openai/') ? 19621027 : undefined,
           messages: [
             ...repairMessages,
             { role: 'system', content: `Return exactly one valid JSON object for schema ${name}. Do not include markdown or commentary.` },
           ],
-          response_format: { type: 'json_object' },
+          response_format: {
+            type: 'json_schema',
+            json_schema: {
+              name: name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64),
+              strict: true,
+              schema: z.toJSONSchema(schema),
+            },
+          },
           usage: { include: true },
         }),
       });

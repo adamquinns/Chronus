@@ -59,19 +59,28 @@ export const simulateActors = async (
     const perceived = perceivedStrategyForActor(actorId, graph);
     const packet = actorVisibleState(actorId, state, beliefs.actors[actorId] ?? { actorId, beliefs: {}, knownFactIds: [] }, perceived);
     const role = depth === 'DEEP' ? 'actor_deep' : 'actor_standard';
-    const result = await gateway.callJson(role, [
-      {
-        role: 'system',
-        content: 'Simulate exactly the supplied actor. Use only this packet. Pursue its objectives from its beliefs, capabilities, and constraints. Never infer hidden player mechanisms or facts absent from the packet. Return one action in actions.',
-      },
-      { role: 'user', content: JSON.stringify(packet) },
-    ], actorActionsSchema, 'ActorActions');
+    let result;
+    try {
+      result = await gateway.callJson(role, [
+        {
+          role: 'system',
+          content: 'Simulate exactly the supplied actor. Use only this packet. Pursue its objectives from its beliefs, capabilities, and constraints. Never infer hidden player mechanisms or facts absent from the packet. Return one concise action in actions.',
+        },
+        { role: 'user', content: JSON.stringify(packet) },
+      ], actorActionsSchema, 'ActorActions');
+    } catch {
+      return [fallbackActorAction(actorId, state, graph)];
+    }
     const allowedCapabilities = new Set(state.entities[actorId].capabilities);
+    const allowedPerceivedMechanisms = new Set(perceived.mechanisms.map((mechanism) => mechanism.id));
+    const allowedBeliefs = new Set(Object.keys((beliefs.actors[actorId] ?? { beliefs: {} }).beliefs));
     return result.value.actions
       .filter((action) => action.actorId === actorId)
       .map((action) => ({
         ...action,
         capabilityIdsUsed: action.capabilityIdsUsed.filter((capability) => allowedCapabilities.has(capability)),
+        perceivedPlayerMechanismIds: action.perceivedPlayerMechanismIds.filter((id) => allowedPerceivedMechanisms.has(id)),
+        beliefKeysUsed: action.beliefKeysUsed.filter((key) => allowedBeliefs.has(key)),
       }))
       .filter((action) => action.capabilityIdsUsed.length > 0 || action.mechanisms.length === 0)
       .slice(0, 1);
@@ -95,14 +104,21 @@ export const runRedTeam = async (
       affectedMechanismIds: [item.mechanismId],
     }));
   }
-  const result = await gateway.callJson('critic', [
-    {
-      role: 'system',
-      content: 'Red-team a dry strategy against authoritative state. Look for compiler charity, omitted dependencies, omniscience, unavailable capability, unsupported surprise, second-order effects, and magnitude drift. Do not improve the plan or decide the outcome.',
-    },
-    { role: 'user', content: JSON.stringify({ strategy: graph, feasibility, actorActions, authoritativeState: authoritativeSnapshot(state) }) },
-  ], redTeamSchema, 'RedTeamFindings');
-  return result.value.findings;
+  try {
+    const result = await gateway.callJson('critic', [
+      {
+        role: 'system',
+        content: 'Red-team a dry strategy against authoritative state. Look for compiler charity, omitted dependencies, omniscience, unavailable capability, unsupported surprise, second-order effects, and magnitude drift. Do not improve the plan or decide the outcome.',
+      },
+      { role: 'user', content: JSON.stringify({ strategy: graph, feasibility, actorActions, authoritativeState: authoritativeSnapshot(state) }) },
+    ], redTeamSchema, 'RedTeamFindings');
+    return result.value.findings;
+  } catch {
+    return feasibility.filter((item) => !item.feasible).map((item) => ({
+      category: 'HIDDEN_DEPENDENCY', severity: item.classification === 'IMPOSSIBLE' ? 'BLOCKING' : 'WARNING',
+      claim: item.hardConstraints.join(' ') || 'A feasibility constraint was detected.', evidence: item.reasons, affectedMechanismIds: [item.mechanismId],
+    }));
+  }
 };
 
 const effect = (
@@ -183,14 +199,18 @@ export const adjudicate = async (
       ? ['NONE', 'TRIVIAL', 'MINOR', 'MODERATE', 'MAJOR', 'SEVERE', 'SYSTEMIC']
       : ['NONE', 'TRIVIAL', 'MINOR', 'MODERATE', 'MAJOR'],
   };
-  const result = await gateway.callJson('adjudicator', [
-    {
-      role: 'system',
-      content: 'Adjudicate causal mechanisms, not rhetoric. Hard state is authoritative. Recommend bounded impact classes, never arbitrary point values. Use only existing targets. A good plan may fail; a bad plan may occasionally succeed. Do not invent capabilities. Outcome probabilities must sum approximately to 1 and must reference recommended effect IDs.',
-    },
-    { role: 'user', content: JSON.stringify(prompt) },
-  ], adjudicationSchema, 'Adjudication');
-  return { ...result.value, outcomeBands: normalizeDistribution(result.value.outcomeBands) };
+  try {
+    const result = await gateway.callJson('adjudicator', [
+      {
+        role: 'system',
+        content: 'Adjudicate causal mechanisms, not rhetoric. Hard state is authoritative. Recommend bounded impact classes, never arbitrary point values. Use only existing targets. A good plan may fail; a bad plan may occasionally succeed. Do not invent capabilities. Be concise: reasons under 80 words, at most 12 effects and 5 outcome bands. Probabilities must sum approximately to 1 and reference recommended effect IDs.',
+      },
+      { role: 'user', content: JSON.stringify(prompt) },
+    ], adjudicationSchema, 'Adjudication');
+    return { ...result.value, outcomeBands: normalizeDistribution(result.value.outcomeBands) };
+  } catch {
+    return fallbackAdjudication(graph, feasibility, actorActions, state);
+  }
 };
 
 export const sanitizeAdjudication = (adjudication: Adjudication, state: WorldState, depth: TurnDepth): Adjudication => {
@@ -226,7 +246,7 @@ export const narrate = async (
   changes: unknown[],
   gateway?: ModelGateway,
 ): Promise<TurnNarrative> => {
-  if (!gateway) {
+  const fallback = (): TurnNarrative => {
     return {
       title: selectedOutcome.label,
       immediateOutcome: selectedOutcome.description,
@@ -235,22 +255,27 @@ export const narrate = async (
       news: [{ source: 'Executive Situation Room', headline: selectedOutcome.description }],
       advisorReactions: [],
     };
+  };
+  if (!gateway) return fallback();
+  try {
+    const result = await gateway.callJson('narrator', [
+      {
+        role: 'system',
+        content: 'Write concise, vivid history from committed reality only. Do not add mechanical consequences, hidden facts, or omniscient explanations. Distinguish what the player can observe from what remains uncertain. Each main section should be under 130 words.',
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          playerVisibleBefore: playerVisibleState(stateBefore, beliefs),
+          committedVisibleAfter: playerVisibleState(stateAfter, beliefs),
+          dryStrategy: graph,
+          selectedOutcome,
+          committedChanges: changes,
+        }),
+      },
+    ], narrativeSchema, 'TurnNarrative');
+    return result.value;
+  } catch {
+    return fallback();
   }
-  const result = await gateway.callJson('narrator', [
-    {
-      role: 'system',
-      content: 'Write concise, vivid history from committed reality only. Do not add mechanical consequences, hidden facts, or omniscient explanations. Distinguish what the player can observe from what remains uncertain. Each main section should be under 130 words.',
-    },
-    {
-      role: 'user',
-      content: JSON.stringify({
-        playerVisibleBefore: playerVisibleState(stateBefore, beliefs),
-        committedVisibleAfter: playerVisibleState(stateAfter, beliefs),
-        dryStrategy: graph,
-        selectedOutcome,
-        committedChanges: changes,
-      }),
-    },
-  ], narrativeSchema, 'TurnNarrative');
-  return result.value;
 };
