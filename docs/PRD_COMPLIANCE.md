@@ -8,6 +8,8 @@ This document is a release gate, not a roadmap. It reflects the user-approved re
 | Engine-only commitment and causal provenance | PASS | `pipeline.test.ts` and `causal-engine.test.ts`; every committed diff retains a source effect and cause |
 | Rhetoric-stripped strategy compilation | PASS | Structural and live rhetoric-invariance plus compiler-charity gates |
 | Compiler fidelity repair | PASS | `causal-engine.test.ts`, `evals.test.ts`, and validated compiler normalization/repair |
+| Dynamic world expansion for novel references | MISSING | Required implementation and acceptance gates are specified in `DYNAMIC_WORLD_EXPANSION_FIX.md`; current compilation drops targets not already present in authoritative state |
+| Player attempt versus asserted external outcome | MISSING | Required non-consuming revision path, autonomous-target behavior, and LBJ/Florida-governor regressions are specified in `DYNAMIC_WORLD_EXPANSION_FIX.md` |
 | Hard authority/resource/logistics/time feasibility | PASS | Zero-tolerance deterministic, impossible-action, resource, process, and time-compression tests |
 | Explicit visibility classes | PASS | `visibility.test.ts` access matrix, prompt packet tests, and post-game boundary test |
 | Sparse beliefs layered over visibility | PASS | Missing-override, inaccessible-source, false-belief, and multi-turn visibility tests |
@@ -38,6 +40,6 @@ This document is a release gate, not a roadmap. It reflects the user-approved re
 
 ## Completion rule
 
-Release is permitted only when every row is `PASS`, all automated tests and eval gates pass, the production build succeeds, and the final code-to-PRD audit finds no untracked requirement.
+Release is permitted only when every row is `PASS`, all automated tests and eval gates pass, the production build succeeds, and the final code-to-PRD audit finds no untracked requirement. The two `MISSING` rows above block release and require the dynamic-world implementation before this draft can be considered complete.
 
-Evidence is written to `evals/results/complete.json` and `evals/results/multiturn-live.json`. The 2026-08-14 gate recorded 63/63 deterministic tests, structural 20/20, live behavioral 15/15, and baseline 7/7 versus retired d20 0/7. The 12-turn live CMC campaign passed zero-error validation, calibration stability, concealment detection (84 audited draws), autonomous initiative (25 committed effects), externally graded late narrative quality, and exact snapshot reconstruction. Browser QA covered both supported scenarios at desktop and 390×844 mobile viewports.
+Existing evidence is written to `evals/results/complete.json` and `evals/results/multiturn-live.json`. The 2026-08-14 gate recorded 63/63 deterministic tests, structural 20/20, live behavioral 15/15, and baseline 7/7 versus retired d20 0/7. The 12-turn live CMC campaign passed its defined gates, but subsequent adversarial gameplay demonstrated that those gates did not cover dynamic world expansion or attempted-action semantics. The recorded passes therefore remain valid for their tested properties but are insufficient for release.

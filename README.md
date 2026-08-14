@@ -23,6 +23,8 @@ Campaign state, sparse beliefs, actor memory, and turn audits are stored in Inde
 
 The supported release scenarios are **Midnight in Havana**, beginning on Black Saturday during the Cuban Missile Crisis, and **Twilight of the Republic**, a speculative modern American constitutional crisis. Earlier coalition and military packages remain in the repository as non-release test fixtures and design guidance; their source narratives are preserved verbatim in `docs/source_material/legacy-scenarios.ts.txt`.
 
+> **Draft status:** Adversarial play exposed a release-blocking limitation when directives introduce people or institutions absent from the initial manifest, or assert another actor's behavior as an accomplished fact. The required general fix and acceptance tests are specified in `docs/DYNAMIC_WORLD_EXPANSION_FIX.md`.
+
 ## Run locally
 
 Prerequisites: Node.js 22 or newer.
