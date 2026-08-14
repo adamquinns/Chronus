@@ -17,6 +17,7 @@ type CommitPayload = {
 interface GameConsoleProps {
   turn: TurnData;
   historyCount: number;
+  revisionNotice?: string;
   onCommit: (payload: CommitPayload) => void;
   onOpenJournal: () => void;
   onOpenConsult: (advisorId?: string) => void;
@@ -24,7 +25,7 @@ interface GameConsoleProps {
 }
 
 export const GameConsole: React.FC<GameConsoleProps> = ({
-  turn, historyCount, onCommit, onOpenJournal, onOpenConsult, anyOverlayOpen,
+  turn, historyCount, onCommit, onOpenJournal, onOpenConsult, anyOverlayOpen, revisionNotice,
 }) => {
   const isLaptop = useMinWidth(1024);
   const [selectedChoiceId, setSelectedChoiceId] = useState<string | null>(null);
@@ -147,13 +148,14 @@ interface ViewProps {
   onOpenJournal: () => void;
   onOpenConsult: () => void;
   historyCount: number;
+  revisionNotice?: string;
 }
 
 const Laptop: React.FC<ViewProps> = ({
   turn, statEntries, selectedChoice, selectedChoiceId, expandedChoiceId,
   customDirective, newsExpanded,
   onSelectChoice, onToggleBrief, onCustomChange, onToggleNews, onCommit, canCommit,
-  onOpenJournal, onOpenConsult, historyCount,
+  onOpenJournal, onOpenConsult, historyCount, revisionNotice,
 }) => (
   <div style={{
     fontFamily: T3.fontUI, background: T3.bg0, color: T3.fg1,
@@ -207,7 +209,7 @@ const Laptop: React.FC<ViewProps> = ({
               background: 'transparent', border: `1px solid ${T3.line2}`, borderRadius: T3.r1,
               padding: '4px 10px', color: T3.fg2, cursor: 'pointer',
             }}
-          >Journal ({historyCount - 1}) →</button>
+          >Journal ({historyCount}) →</button>
         )}
       </div>
 
@@ -393,6 +395,7 @@ const Laptop: React.FC<ViewProps> = ({
               value={customDirective}
               onChange={onCustomChange}
               disabled={!!selectedChoiceId}
+              notice={revisionNotice}
             />
           </div>
 
@@ -474,7 +477,7 @@ const Mobile: React.FC<MobileProps> = ({
   turn, statEntries, selectedChoice, selectedChoiceId, expandedChoiceId,
   customDirective, newsExpanded,
   onSelectChoice, onToggleBrief, onCustomChange, onToggleNews, onCommit, canCommit,
-  sheet, onOpenSheet, onOpenJournal, onOpenConsult, historyCount,
+  sheet, onOpenSheet, onOpenJournal, onOpenConsult, historyCount, revisionNotice,
 }) => (
   <div style={{
     fontFamily: T3.fontUI, background: T3.bg0, color: T3.fg1,
@@ -647,6 +650,7 @@ const Mobile: React.FC<MobileProps> = ({
             onChange={onCustomChange}
             disabled={!!selectedChoiceId}
             compact
+            notice={revisionNotice}
           />
         </div>
       </section>
@@ -800,7 +804,8 @@ const CustomDirectiveInput: React.FC<{
   onChange: (v: string) => void;
   disabled: boolean;
   compact?: boolean;
-}> = ({ value, onChange, disabled, compact = false }) => (
+  notice?: string;
+}> = ({ value, onChange, disabled, compact = false, notice }) => (
   <div style={{
     border: `1px dashed ${T3.line2}`, borderRadius: T3.r3,
     padding: compact ? T3.sp3 : T3.sp4,
@@ -818,6 +823,16 @@ const CustomDirectiveInput: React.FC<{
       }}>+</div>
     )}
     <div style={{ minWidth: 0 }}>
+      {notice && (
+        <div role="alert" style={{
+          marginBottom: T3.sp3, padding: `${T3.sp2}px ${T3.sp3}px`,
+          background: T3.sigBg, border: `1px solid ${T3.sigLine}`, borderRadius: T3.r2,
+          color: T3.fg1, fontSize: T3.s12, lineHeight: 1.5,
+        }}>
+          <span style={{ color: T3.sig, fontWeight: 600, marginRight: 6 }}>Revise directive —</span>
+          {notice} No turn was consumed.
+        </div>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: T3.sp2, marginBottom: 4, flexWrap: 'wrap' }}>
         <span style={{
           fontFamily: T3.fontUI, fontSize: T3.s10, fontWeight: 600,

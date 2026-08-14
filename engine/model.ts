@@ -12,7 +12,8 @@ export type ModelRole =
   | 'validator'
   | 'scenario_architect'
   | 'scenario_researcher'
-  | 'option_generator';
+  | 'option_generator'
+  | 'world_grounder';
 
 export interface ModelRoute {
   model: string;
@@ -35,6 +36,7 @@ export const DEFAULT_MODEL_ROUTES: ModelRoutes = {
   scenario_architect: { model: 'openai/gpt-5.6-terra', temperature: 0.15, maxTokens: 9000, timeoutMs: 120_000 },
   scenario_researcher: { model: 'anthropic/claude-sonnet-5', temperature: 0.1, maxTokens: 5000, timeoutMs: 90_000 },
   option_generator: { model: 'openai/gpt-5.6-luna', temperature: 0.4, maxTokens: 1200, timeoutMs: 45_000 },
+  world_grounder: { model: 'openai/gpt-5.6-luna', temperature: 0.1, maxTokens: 2400, timeoutMs: 45_000 },
 };
 
 export interface BudgetPolicy {

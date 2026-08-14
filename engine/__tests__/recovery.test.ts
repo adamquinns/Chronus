@@ -10,7 +10,7 @@ import { validateAdjudicationProposal } from '../validation';
 const graph: StrategyGraph = {
   objective: 'Contact Governor Vale privately',
   mechanisms: [{ id: 'm1', kind: 'DIPLOMACY', objective: 'Contact Governor Vale privately', targetIds: ['governor_vale'], actorIds: ['organizer'], dependencies: [], assumptions: [], sequence: 0, durationTurns: 1, resourceClaims: [], specifiedDetail: 'Contact Governor Vale privately' }],
-  sequencing: ['m1'], contingencies: [], explicitRisks: [], unspecified: [], communicationStyleIsMechanism: false,
+  sequencing: ['m1'], contingencies: [], explicitRisks: [], unspecified: [], communicationStyleIsMechanism: false, requestedOutcomes: [], assertedExternalEvents: [], rationale: [], unresolvedReferences: [],
 };
 
 const adjudication = (targetId = 'coalition_cohesion', impactClass: Adjudication['recommendedEffects'][number]['impactClass'] = 'MINOR'): Adjudication => ({

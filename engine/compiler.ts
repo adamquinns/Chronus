@@ -12,6 +12,7 @@ import { ModelGateway } from './model';
 import { fidelitySchema, strategyGraphSchema } from './schemas';
 import { playerVisibleState } from './projections';
 import { conditionMet } from './state';
+import { extractWorldReferences } from './worldExpansion';
 
 export const deRhetoricize = (directive: string) => directive
   .replace(/^(?:(?:this\s+is|behold)\s+)?my\b[^:]{0,240}\b(?:brilliant|genius|masterful|masterstroke|perfect|foolproof|guaranteed|unbeatable)\b[^:]*:\s*/i, '')
@@ -37,7 +38,7 @@ const inferKind = (text: string): StrategyMechanism['kind'] => {
   if (/speech|announce|public|broadcast|\bpress\b/i.test(text)) return 'PUBLIC_COMMUNICATION';
   if (/coalition|allies|governor|organize|recruit/i.test(text)) return 'COALITION_BUILDING';
   if (/sanction|economic|business|insurance|trade|financial/i.test(text)) return 'ECONOMIC_PRESSURE';
-  if (/threat|ultimatum|coerce|pressure/i.test(text)) return 'COERCION';
+  if (/threat|ultimatum|coerce|pressure|demand/i.test(text)) return 'COERCION';
   if (/order|direct|authorize|instruct|command/i.test(text)) return 'DIRECT_ORDER';
   return 'OTHER';
 };
@@ -66,8 +67,38 @@ const resourceClaims = (text: string, state: WorldState) => {
   return resource ? [{ resourceId: resource.id, amount }] : [];
 };
 
+/** First-person or imperative openings that mark a clause as a player ATTEMPT. */
+const ATTEMPT_LEAD = /^(?:i|we|i'm|i am|i'll|i will|my|our|let's|have|order|ask|call|phone|contact|send|write|draft|demand|offer|announce|declare|prepare|investigate|authorize|instruct|direct|tell|negotiate|deploy|move|allocate|transfer|fund|recruit|organize|convene|meet|brief|publicly|privately|quietly|secretly|immediately|urgently|begin|start|launch|signal|propose|request|press|pressure|lobby|persuade|convince|warn|threaten|delay|pause|keep|use|concentrate|hold|reinforce|probe|inspect|gather|sound out|reach out)\b/i;
+
+/** Verbs that declare another actor's behavior or an outcome as already decided. */
+const EXTERNAL_EVENT = /\b(?:freaks?(?:\s+out)?|panics?|agrees?|complies|resigns?|surrenders?|defects?|approves?|endorses?|withdraws?|backs?\s+down|capitulates?|flees|steps?\s+down|will\s+(?:be|resign|comply|agree|approve|surrender|withdraw|endorse|step\s+down)|is\s+(?:resigning|complying|agreeing|surrendering|withdrawing))\b/i;
+
+export const classifyClause = (clause: string): 'ATTEMPT' | 'ASSERTED_EXTERNAL' | 'RATIONALE' => {
+  const trimmed = clause.trim();
+  if (/^because\b/i.test(trimmed)) return 'RATIONALE';
+  if (ATTEMPT_LEAD.test(trimmed)) return 'ATTEMPT';
+  if (EXTERNAL_EVENT.test(trimmed)) return 'ASSERTED_EXTERNAL';
+  return 'ATTEMPT';
+};
+
+const extractRequestedOutcomes = (directive: string): string[] => {
+  const outcomes: string[] = [];
+  for (const match of deRhetoricize(directive).matchAll(/(?:ask|asked|asking|demand|demanding|convince|persuade|press|pressure|get|urge)\b[^.;]*?\bto\s+([^,.;]+)/gi)) {
+    outcomes.push(match[1].trim());
+  }
+  return [...new Set(outcomes)].slice(0, 8);
+};
+
+const extractRationale = (directive: string): string[] => {
+  const rationale: string[] = [];
+  for (const match of deRhetoricize(directive).matchAll(/because\s+([^,.;]+)/gi)) rationale.push(match[1].trim());
+  return [...new Set(rationale)].slice(0, 6);
+};
+
 export const compileDeterministically = (directive: string, state: WorldState): StrategyGraph => {
-  const parts = clauses(directive);
+  const allParts = clauses(directive).map((clause, index) => ({ clause, clauseId: `c${index + 1}`, category: classifyClause(clause) }));
+  const assertedExternalEvents = allParts.filter((part) => part.category === 'ASSERTED_EXTERNAL').map((part) => part.clause);
+  const parts = allParts.filter((part) => part.category === 'ATTEMPT').map((part) => part.clause);
   const mechanisms = parts.map((part, index): StrategyMechanism => ({
     id: `m${index + 1}`,
     kind: inferKind(part),
@@ -84,7 +115,11 @@ export const compileDeterministically = (directive: string, state: WorldState): 
   }));
   return {
     objective: parts[0] ?? directive.trim(),
-    mechanisms: mechanisms.length ? mechanisms : [{
+    // A directive consisting ONLY of asserted external events legitimately
+    // compiles to zero mechanisms; the pipeline returns it for revision without
+    // consuming a turn. The generic OTHER fallback applies only when nothing
+    // was classified at all.
+    mechanisms: mechanisms.length ? mechanisms : assertedExternalEvents.length ? [] : [{
       id: 'm1', kind: 'OTHER', objective: directive.trim(), targetIds: [], actorIds: [state.manifest.playerId],
       dependencies: [], assumptions: [], sequence: 0, durationTurns: 1, resourceClaims: [], specifiedDetail: directive.trim(),
       concealed: /secret|quietly|privately|covert|conceal/i.test(directive),
@@ -94,11 +129,20 @@ export const compileDeterministically = (directive: string, state: WorldState): 
     explicitRisks: [],
     unspecified: mechanisms.filter((item) => item.kind === 'OTHER').map((item) => `Mechanism for “${item.specifiedDetail}” is unspecified.`),
     communicationStyleIsMechanism: /speech|message|signal|tone|publicly|privately/i.test(directive),
+    requestedOutcomes: extractRequestedOutcomes(directive),
+    assertedExternalEvents,
+    rationale: extractRationale(directive),
+    unresolvedReferences: extractWorldReferences(directive, state).map((reference, index) => ({
+      ...reference,
+      clauseId: reference.clauseId || `c${index + 1}`,
+      requiredForAttempt: parts.some((part) => part.toLowerCase().includes(reference.mention.toLowerCase())),
+    })),
   };
 };
 
 export const normalizeStrategyGraph = (graph: StrategyGraph, state: WorldState): StrategyGraph => {
   const unknownReferences: string[] = [];
+  const droppedTargetReferences: StrategyGraph['unresolvedReferences'] = [];
   const seenIds = new Set<string>();
   const mechanisms = graph.mechanisms.map((mechanism, index) => {
     let id = mechanism.id || `m${index + 1}`;
@@ -106,6 +150,11 @@ export const normalizeStrategyGraph = (graph: StrategyGraph, state: WorldState):
     seenIds.add(id);
     const unknownTargets = mechanism.targetIds.filter((targetId) => !state.entities[targetId]);
     unknownReferences.push(...unknownTargets.map((targetId) => `Unresolved target reference “${targetId}” in mechanism ${id}.`));
+    droppedTargetReferences.push(...unknownTargets.map((targetId) => ({
+      mention: targetId.replaceAll('_', ' '),
+      clauseId: id,
+      requiredForAttempt: true,
+    })));
     const literalTargets = referencedIds(`${mechanism.specifiedDetail} ${mechanism.objective}`, state);
     const targetIds = [...new Set([
       ...mechanism.targetIds.filter((targetId) => Boolean(state.entities[targetId])),
@@ -121,11 +170,20 @@ export const normalizeStrategyGraph = (graph: StrategyGraph, state: WorldState):
     return { ...mechanism, id, targetIds, actorIds, resourceClaims, concealed: Boolean(mechanism.concealed || mechanism.kind === 'DECEPTION') };
   });
   const ids = new Set(mechanisms.map((mechanism) => mechanism.id));
+  const existingRefs = graph.unresolvedReferences ?? [];
+  const mergedRefs = [...existingRefs];
+  for (const reference of droppedTargetReferences) {
+    if (!mergedRefs.some((existing) => existing.mention.toLowerCase() === reference.mention.toLowerCase())) mergedRefs.push(reference);
+  }
   return {
     ...graph,
     mechanisms,
     sequencing: graph.sequencing.filter((id) => ids.has(id)),
     unspecified: [...new Set([...graph.unspecified, ...unknownReferences])],
+    requestedOutcomes: graph.requestedOutcomes ?? [],
+    assertedExternalEvents: graph.assertedExternalEvents ?? [],
+    rationale: graph.rationale ?? [],
+    unresolvedReferences: mergedRefs,
   };
 };
 
@@ -140,7 +198,7 @@ export const compileStrategy = async (
     const result = await gateway.callJson('strategy_compiler', [
       {
         role: 'system',
-        content: 'You are a literal strategy compiler. Extract only mechanisms supplied or reasonably implied. Do not praise, repair, optimize, or invent leverage. Preserve vague mechanisms as vague and list missing details under unspecified.',
+        content: 'You are a literal strategy compiler. Decompose the directive into: mechanisms — ONLY actions the player can personally attempt or order (call, ask, demand, prepare, allocate, announce); requestedOutcomes — desired results that depend on another actor or on feasibility (a resignation obtained, an agreement reached); assertedExternalEvents — text that declares another actor’s behavior, emotion, or an outcome as already decided (never convert these into mechanisms or targets); rationale — the player’s stated theory of leverage; unresolvedReferences — people, offices, or institutions relevant to an attempt but absent from the permittedContext entity list. Extract only what is supplied or reasonably implied. Do not praise, repair, optimize, or invent leverage. Preserve vague mechanisms as vague and list missing details under unspecified.',
       },
       {
         role: 'user',

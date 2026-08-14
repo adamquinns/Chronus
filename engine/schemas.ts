@@ -22,12 +22,66 @@ export const mechanismSchema = z.object({
 
 export const strategyGraphSchema = z.object({
   objective: z.string(),
-  mechanisms: z.array(mechanismSchema).min(1).max(12),
+  mechanisms: z.array(mechanismSchema).max(12),
   sequencing: z.array(z.string()),
   contingencies: z.array(z.string()),
   explicitRisks: z.array(z.string()),
   unspecified: z.array(z.string()),
   communicationStyleIsMechanism: z.boolean(),
+  requestedOutcomes: z.array(z.string().max(300)).max(8).default([]),
+  assertedExternalEvents: z.array(z.string().max(300)).max(8).default([]),
+  rationale: z.array(z.string().max(300)).max(6).default([]),
+  unresolvedReferences: z.array(z.object({
+    mention: z.string().max(120),
+    kindHint: z.enum(['PERSON', 'FACTION', 'INSTITUTION', 'MILITARY', 'STATE', 'ASSET', 'OFFICE', 'PLACE', 'PROCESS']).optional(),
+    clauseId: z.string().default(''),
+    requiredForAttempt: z.boolean().default(true),
+  })).max(8).default([]),
+});
+
+const entityDraftSchema = z.object({
+  id: z.string().max(64),
+  name: z.string().max(80),
+  kind: z.enum(['PERSON', 'FACTION', 'INSTITUTION', 'MILITARY', 'STATE', 'ASSET']),
+  description: z.string().max(400),
+  objectives: z.array(z.string().max(160)).min(1).max(4),
+  capabilities: z.array(z.string().max(120)).min(1).max(6),
+  constraints: z.array(z.string().max(160)).max(4).default([]),
+  power: z.number().min(0).max(100),
+  resolve: z.number().min(0).max(100),
+});
+
+export const worldExtensionSchema = z.object({
+  rationale: z.string().max(600),
+  entities: z.array(entityDraftSchema).max(2),
+  relationships: z.array(z.object({
+    id: z.string().max(80),
+    fromId: z.string(),
+    toId: z.string(),
+    alignment: z.number().min(0).max(100),
+    trust: z.number().min(0).max(100),
+    leverage: z.number().min(0).max(100),
+    communication: z.boolean(),
+    commitments: z.array(z.string().max(160)).max(3).default([]),
+  })).max(4),
+  facts: z.array(z.object({
+    id: z.string().max(80),
+    statement: z.string().max(400),
+    provenance: z.enum(['VERIFIED_FACT', 'WELL_SUPPORTED_INFERENCE', 'CONTESTED_INTERPRETATION', 'SCENARIO_ABSTRACTION']),
+    confidence,
+    sourceRefs: z.array(z.string().max(200)).max(4).default([]),
+  })).max(4),
+  arcs: z.array(z.object({
+    id: z.string().max(80),
+    title: z.string().max(120),
+    description: z.string().max(300),
+    direction: z.enum(['RISING', 'FALLING', 'STABLE']),
+    ownerId: z.string().optional(),
+    participantIds: z.array(z.string()).max(6).default([]),
+  })).max(1),
+  aliases: z.array(z.object({ alias: z.string().max(80), targetId: z.string(), confidence })).max(8),
+  sourceRefs: z.array(z.string().max(200)).max(6).default([]),
+  confidence,
 });
 
 export const fidelitySchema = z.object({

@@ -310,7 +310,7 @@ export const createCubanCampaign = (seed = 19621027): Campaign => {
     currentStrategy: state.entities[actorId].objectives[0],
     historicalPriorWeight: 1,
   }]));
-  const campaign: Campaign = { state, beliefs, memories, audits: [], storySummary: '', narrativeCharacters: [], narrativeThreads: [], chronicle: [] };
+  const campaign: Campaign = { state, beliefs, memories, audits: [], storySummary: '', narrativeCharacters: [], narrativeThreads: [], chronicle: [], aliases: {} };
   assertValidScenario(campaign);
   return campaign;
 };

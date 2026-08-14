@@ -96,8 +96,21 @@ export const validateAdjudicationProposal = (
     return effect.targetId === state.goal.id;
   };
 
+  const escalationMetricId = state.manifest.metricRoles?.escalation;
   for (const effect of adjudication.recommendedEffects) {
     const mechanism = mechanisms.get(effect.mechanismId);
+    if (escalationMetricId && effect.targetType === 'METRIC' && effect.targetId === escalationMetricId) {
+      const grounded = effect.dependencies.some((dependency) =>
+        (effects.has(dependency) && effects.get(dependency)!.targetType !== 'METRIC')
+        || (authoritativeDependencies.has(dependency) && !(dependency in state.metrics)));
+      if (!grounded) {
+        issues.push({
+          code: 'EFFECT_UNSUPPORTED_ESCALATION',
+          severity: 'ERROR',
+          message: `${effect.id} changes the escalation metric without a non-metric causal dependency; rhetoric-to-metric shortcuts are forbidden.`,
+        });
+      }
+    }
     if (!mechanism && !actorMechanisms.has(effect.mechanismId)) issues.push({ code: 'EFFECT_MECHANISM_UNKNOWN', severity: 'ERROR', message: `${effect.id} references unknown mechanism ${effect.mechanismId}.` });
     if (feasibilityById.get(effect.mechanismId)?.classification === 'IMPOSSIBLE') issues.push({ code: 'EFFECT_FROM_IMPOSSIBLE', severity: 'ERROR', message: `${effect.id} derives from an impossible mechanism.` });
     if (!targetExists(effect)) issues.push({ code: 'EFFECT_TARGET_UNKNOWN', severity: 'ERROR', message: `${effect.id} references unknown target ${effect.targetId}.` });

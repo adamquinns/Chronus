@@ -2,6 +2,7 @@ import {
   Adjudication,
   Campaign,
   CompilerFidelity,
+  DirectiveRevisionError,
   EffectRecommendation,
   RedTeamFinding,
   ModelDisagreement,
@@ -10,6 +11,7 @@ import {
   TurnPreview,
   TurnResult,
   ValidationIssue,
+  WorldState,
 } from './domain';
 import { normalizeDistribution } from './calibration';
 import { auditCompilerFidelity, checkFeasibility, classifyTurn, compileStrategy, normalizeStrategyGraph } from './compiler';
@@ -28,6 +30,7 @@ import { snapshotHash } from './audit';
 import { buildCounterfactualBranches } from './branching';
 import { resolveDetection } from './detection';
 import { buildNarrativePacket } from './narrative';
+import { groundReferences } from './worldExpansion';
 
 export interface RunTurnOptions {
   gateway?: ModelGateway;
@@ -95,7 +98,7 @@ export const reconcileAdjudications = (primary: Adjudication, second: Adjudicati
 };
 
 const getSecondOpinion = async (
-  campaign: Campaign,
+  world: WorldState,
   graph: TurnAudit['dryStrategy'],
   feasibility: TurnAudit['feasibility'],
   actorActions: TurnAudit['actorActions'],
@@ -111,7 +114,7 @@ const getSecondOpinion = async (
     },
     {
       role: 'user',
-      content: JSON.stringify({ dryStrategy: graph, feasibility, actorActions, redTeam, causalPrecedents: precedents, robustnessBranches: counterfactualBranches, historicalPriorWeight: historicalPriorWeight(campaign.state), authoritativeState: authoritativeSnapshot(campaign.state) }),
+      content: JSON.stringify({ dryStrategy: graph, feasibility, actorActions, redTeam, causalPrecedents: precedents, robustnessBranches: counterfactualBranches, historicalPriorWeight: historicalPriorWeight(world), authoritativeState: authoritativeSnapshot(world) }),
     },
   ], adjudicationSchema, 'IndependentAdjudication');
   return normalizeAdjudicationWire(result.value);
@@ -119,7 +122,7 @@ const getSecondOpinion = async (
 
 const repairAdjudication = async (
   role: 'validator' | 'deep_second_opinion',
-  campaign: Campaign,
+  world: WorldState,
   graph: TurnAudit['dryStrategy'],
   feasibility: TurnAudit['feasibility'],
   actorActions: TurnAudit['actorActions'],
@@ -144,7 +147,7 @@ const repairAdjudication = async (
         redTeam,
         causalPrecedents: precedents,
         robustnessBranches: counterfactualBranches,
-        authoritativeState: authoritativeSnapshot(campaign.state),
+        authoritativeState: authoritativeSnapshot(world),
         priorAdjudication: prior,
         validationFailures: failures,
       }),
@@ -176,12 +179,39 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
   let dryStrategy = await compileStrategy(rawDirective, campaign.state, campaign.beliefs, options.gateway);
   const compilerFidelity: CompilerFidelity = await auditCompilerFidelity(rawDirective, dryStrategy, options.gateway);
   if (!compilerFidelity.faithful && compilerFidelity.repairedGraph) dryStrategy = normalizeStrategyGraph(compilerFidelity.repairedGraph, campaign.state);
-  const routing = classifyTurn(dryStrategy, campaign.state);
-  const depth = routing.depth;
   progress(options, 'COMPILE', 'Strategy interpreted', 'Rhetoric removed and causal mechanisms extracted.', 'COMPLETED');
 
+  // Player-agency boundary: a directive containing only asserted external
+  // events has no player attempt to simulate. Return it for revision BEFORE
+  // any state, RNG, actor, resource, or time advance.
+  if (!dryStrategy.mechanisms.length) {
+    throw new DirectiveRevisionError(
+      'You control your approach, not other actors’ choices. Describe what you attempt — who you contact, order, pressure, or prepare — and the simulation will decide how the world responds.',
+      { assertedExternalEvents: dryStrategy.assertedExternalEvents, requestedOutcomes: dryStrategy.requestedOutcomes },
+    );
+  }
+
+  progress(options, 'GROUND', 'Grounding new references', 'Resolving people and institutions not yet represented in the world.');
+  const grounding = await groundReferences(dryStrategy, campaign.state, campaign.aliases ?? {}, options.gateway);
+  dryStrategy = normalizeStrategyGraph(grounding.graph, grounding.workingState);
+  const world = grounding.workingState;
+  progress(
+    options,
+    'GROUND',
+    grounding.audit.applied ? 'World extended' : 'References resolved',
+    grounding.audit.applied
+      ? `${grounding.proposal?.entities.length ?? 0} new object(s) materialized with provenance; ${grounding.audit.aliasesResolved.length} reference(s) matched existing actors.`
+      : grounding.audit.references.length
+        ? `${grounding.audit.aliasesResolved.length} of ${grounding.audit.references.length} reference(s) matched existing actors.`
+        : 'No unresolved references.',
+    'COMPLETED',
+  );
+
+  const routing = classifyTurn(dryStrategy, world);
+  const depth = routing.depth;
+
   progress(options, 'FEASIBILITY', 'Checking hard constraints', 'Authority, resources, timing, logistics, and communication.');
-  const feasibility = checkFeasibility(dryStrategy, campaign.state);
+  const feasibility = checkFeasibility(dryStrategy, world);
   const precedents = retrievePrecedents(campaign, dryStrategy);
   options.onPreview?.({
     strategy: dryStrategy.objective,
@@ -209,23 +239,23 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
 
   progress(options, 'ACTORS', depth === 'ROUTINE' ? 'Actor simulation not required' : 'Simulating relevant actors', depth === 'ROUTINE' ? 'This narrow action has no material actor response before commitment.' : 'Each actor receives only its permitted beliefs and observations.');
   progress(options, 'RED_TEAM', depth === 'ROUTINE' ? 'Routine constraint audit' : 'Challenging the strategy', depth === 'ROUTINE' ? 'Hard constraints provide sufficient adversarial checking.' : 'Auditing hidden dependencies, capabilities, and second-order effects.');
-  const detection = resolveDetection(dryStrategy, Object.keys(campaign.state.entities).filter((actorId) => actorId !== campaign.state.manifest.playerId), campaign.state);
+  const detection = resolveDetection(dryStrategy, Object.keys(world.entities).filter((actorId) => actorId !== world.manifest.playerId), world);
   const [actorSimulation, redTeam] = depth === 'ROUTINE'
-    ? [{ actions: [], packets: [] }, await runRedTeam(dryStrategy, rawDirective, feasibility, [], campaign.state, precedents)]
+    ? [{ actions: [], packets: [] }, await runRedTeam(dryStrategy, rawDirective, feasibility, [], world, precedents)]
     : await Promise.all([
-      simulateActors(dryStrategy, campaign.state, campaign.beliefs, depth, options.gateway, campaign.memories, detection.perceptions),
-      runRedTeam(dryStrategy, rawDirective, feasibility, [], campaign.state, precedents, options.gateway),
+      simulateActors(dryStrategy, world, campaign.beliefs, depth, options.gateway, campaign.memories, detection.perceptions),
+      runRedTeam(dryStrategy, rawDirective, feasibility, [], world, precedents, options.gateway),
     ]);
   const actorActions = actorSimulation.actions;
-  const counterfactualBranches = depth === 'DEEP' ? buildCounterfactualBranches(dryStrategy, actorActions, redTeam, campaign.state) : [];
-  const actorValidation = validateActorActions(actorActions, campaign.state, dryStrategy);
+  const counterfactualBranches = depth === 'DEEP' ? buildCounterfactualBranches(dryStrategy, actorActions, redTeam, world) : [];
+  const actorValidation = validateActorActions(actorActions, world, dryStrategy);
   const invalidActorActions = actorValidation.filter((issue) => issue.severity === 'ERROR');
   if (invalidActorActions.length) throw new Error(`Actor simulation rejected: ${invalidActorActions[0].message}`);
   progress(options, 'ACTORS', 'Relevant actors modeled', 'Information-isolated actor actions are ready for adjudication.', 'COMPLETED');
   progress(options, 'RED_TEAM', 'Strategic assumptions challenged', 'Dependencies, capabilities, and second-order risks were reviewed.', 'COMPLETED');
 
   progress(options, 'ADJUDICATE', 'Adjudicating causal effects', 'Converting constrained judgments into bounded effect recommendations.');
-  const primaryPromise = adjudicate(dryStrategy, feasibility, actorActions, redTeam, campaign.state, depth, precedents, counterfactualBranches, options.gateway);
+  const primaryPromise = adjudicate(dryStrategy, feasibility, actorActions, redTeam, world, depth, precedents, counterfactualBranches, options.gateway);
   const needsSecondOpinion = depth === 'DEEP' && Boolean(options.gateway) && (
     dryStrategy.mechanisms.some((mechanism) => mechanism.kind === 'OTHER')
     || dryStrategy.mechanisms.length >= 5
@@ -233,7 +263,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     || extremeDangerMetric(campaign)
   );
   const secondPromise = needsSecondOpinion && options.gateway
-    ? getSecondOpinion(campaign, dryStrategy, feasibility, actorActions, redTeam, precedents, counterfactualBranches, options.gateway)
+    ? getSecondOpinion(world, dryStrategy, feasibility, actorActions, redTeam, precedents, counterfactualBranches, options.gateway)
       .then((value) => ({ value }))
       .catch((error: unknown) => ({ error }))
     : undefined;
@@ -242,7 +272,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
   try {
     rawAdjudication = await primaryPromise;
   } catch (error) {
-    rawAdjudication = fallbackAdjudication(dryStrategy, feasibility, actorActions, campaign.state);
+    rawAdjudication = fallbackAdjudication(dryStrategy, feasibility, actorActions, world);
     recoveredValidation.push({
       code: 'PRIMARY_ADJUDICATION_FAILED',
       severity: 'WARNING',
@@ -255,19 +285,19 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     code: 'HARD_FEASIBILITY_EFFECT_REMOVED', severity: 'WARNING' as const,
     message: `${effectId} was removed before resolution because its mechanism is hard-impossible.`,
   })));
-  let proposalFailures = validateAdjudicationProposal(rawAdjudication, dryStrategy, feasibility, campaign.state, actorActions)
+  let proposalFailures = validateAdjudicationProposal(rawAdjudication, dryStrategy, feasibility, world, actorActions)
     .filter((issue) => issue.severity === 'ERROR');
   if (proposalFailures.length && options.gateway) {
     const originalFailures = proposalFailures;
     try {
       rawAdjudication = await repairAdjudication(
-        'validator', campaign, dryStrategy, feasibility, actorActions, redTeam, precedents, counterfactualBranches,
+        'validator', world, dryStrategy, feasibility, actorActions, redTeam, precedents, counterfactualBranches,
         rawAdjudication, originalFailures, options.gateway,
       );
       const filteredRepair = enforceHardFeasibility(rawAdjudication, feasibility);
       rawAdjudication = filteredRepair.adjudication;
       recoveredValidation.push(...filteredRepair.removedEffectIds.map((effectId) => ({ code: 'HARD_FEASIBILITY_EFFECT_REMOVED', severity: 'WARNING' as const, message: `${effectId} was removed from repaired adjudication because its mechanism is hard-impossible.` })));
-      proposalFailures = validateAdjudicationProposal(rawAdjudication, dryStrategy, feasibility, campaign.state, actorActions)
+      proposalFailures = validateAdjudicationProposal(rawAdjudication, dryStrategy, feasibility, world, actorActions)
         .filter((issue) => issue.severity === 'ERROR');
       recoveredValidation.push(...originalFailures.map((issue) => ({ ...issue, code: `RECOVERED_${issue.code}`, severity: 'WARNING' as const })));
     } catch (error) {
@@ -276,13 +306,13 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     if (proposalFailures.length) {
       try {
         rawAdjudication = await repairAdjudication(
-          'deep_second_opinion', campaign, dryStrategy, feasibility, actorActions, redTeam, precedents, counterfactualBranches,
+          'deep_second_opinion', world, dryStrategy, feasibility, actorActions, redTeam, precedents, counterfactualBranches,
           rawAdjudication, proposalFailures, options.gateway,
         );
         const filteredEscalation = enforceHardFeasibility(rawAdjudication, feasibility);
         rawAdjudication = filteredEscalation.adjudication;
         recoveredValidation.push(...filteredEscalation.removedEffectIds.map((effectId) => ({ code: 'HARD_FEASIBILITY_EFFECT_REMOVED', severity: 'WARNING' as const, message: `${effectId} was removed from escalated adjudication because its mechanism is hard-impossible.` })));
-        const escalatedFailures = validateAdjudicationProposal(rawAdjudication, dryStrategy, feasibility, campaign.state, actorActions)
+        const escalatedFailures = validateAdjudicationProposal(rawAdjudication, dryStrategy, feasibility, world, actorActions)
           .filter((issue) => issue.severity === 'ERROR');
         if (escalatedFailures.length) throw new Error(escalatedFailures[0].message);
         recoveredValidation.push(...proposalFailures.map((issue) => ({ ...issue, code: `RECOVERED_${issue.code}`, severity: 'WARNING' as const })));
@@ -293,13 +323,13 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     }
   }
   if (proposalFailures.length) throw new Error(`Adjudication rejected: ${proposalFailures[0].message}`);
-  let adjudication = sanitizeAdjudication(rawAdjudication, campaign.state, depth, feasibility, actorActions, dryStrategy);
+  let adjudication = sanitizeAdjudication(rawAdjudication, world, depth, feasibility, actorActions, dryStrategy);
   let disagreement: ModelDisagreement = { compared: false, material: false, severityScore: 0, differences: [], response: 'NONE' };
   if (needsSecondOpinion && options.gateway) {
     try {
       const secondResult = await secondPromise!;
       if ('error' in secondResult) throw secondResult.error;
-      const second = sanitizeAdjudication(secondResult.value, campaign.state, depth, feasibility, actorActions, dryStrategy);
+      const second = sanitizeAdjudication(secondResult.value, world, depth, feasibility, actorActions, dryStrategy);
       const reconciled = reconcileAdjudications(adjudication, second);
       adjudication = reconciled.adjudication;
       disagreement = reconciled.disagreement;
@@ -383,8 +413,8 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
         },
       }];
     });
-  const maturedEffects = evolvePendingProcesses(campaign.state);
-  const worldEffects = autonomousWorldEffects(campaign.state);
+  const maturedEffects = evolvePendingProcesses(world);
+  const worldEffects = autonomousWorldEffects(world);
   progress(
     options,
     'UNCERTAINTY',
@@ -394,7 +424,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
   );
 
   progress(options, 'COMMIT', 'Committing authoritative state', 'Applying validated effects with causal provenance.');
-  const committed = commitEffects(campaign.state, [...selectedEffects, ...scheduledEffects, ...maturedEffects, ...worldEffects]);
+  const committed = commitEffects(campaign.state, [...selectedEffects, ...scheduledEffects, ...maturedEffects, ...worldEffects], grounding.proposal);
   committed.state.rngCursor = draw?.cursor ?? detection.cursor;
   committed.state = advanceScenarioTime(committed.state);
   progress(options, 'COMMIT', 'History committed', 'Only engine-validated effects changed authoritative state.', 'COMPLETED');
@@ -467,6 +497,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     accessDecisions: buildAccessDecisionMatrix(committed.state),
     detectionRecords: detection.records,
     narrativePacket,
+    worldExtension: grounding.audit,
   };
   const narrativeCharacters = [...campaign.narrativeCharacters, ...narrative.newCharacters.map((character) => ({ ...character, introducedTurn: committed.state.turn, memories: [] }))].slice(-6);
   const threadMap = new Map(campaign.narrativeThreads.map((thread) => [thread.id, thread]));
@@ -476,6 +507,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     beliefs: nextBeliefs,
     memories: nextMemories,
     audits: [...campaign.audits, audit],
+    aliases: { ...(campaign.aliases ?? {}), ...grounding.aliasUpdates },
     storySummary: narrative.updatedStorySummary || campaign.storySummary,
     narrativeCharacters,
     narrativeThreads: [...threadMap.values()],

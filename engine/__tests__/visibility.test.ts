@@ -26,7 +26,7 @@ describe('explicit visibility classes', () => {
     expect(playerPacket).not.toContain('nuclear-armed torpedo');
 
     const emptyGraph = perceivedStrategyForActor('b59', {
-      objective: 'Unknown', mechanisms: [], sequencing: [], contingencies: [], explicitRisks: [], unspecified: [], communicationStyleIsMechanism: false,
+      objective: 'Unknown', mechanisms: [], sequencing: [], contingencies: [], explicitRisks: [], unspecified: [], communicationStyleIsMechanism: false, requestedOutcomes: [], assertedExternalEvents: [], rationale: [], unresolvedReferences: [],
     });
     const b59Packet = JSON.stringify(actorVisibleState('b59', campaign.state, campaign.beliefs.actors.b59, emptyGraph));
     const castroPacket = JSON.stringify(actorVisibleState('castro', campaign.state, campaign.beliefs.actors.castro, emptyGraph));
@@ -41,7 +41,7 @@ describe('explicit visibility classes', () => {
       'joint_chiefs',
       campaign.state,
       campaign.beliefs.actors.joint_chiefs,
-      perceivedStrategyForActor('joint_chiefs', { objective: 'Unknown', mechanisms: [], sequencing: [], contingencies: [], explicitRisks: [], unspecified: [], communicationStyleIsMechanism: false }),
+      perceivedStrategyForActor('joint_chiefs', { objective: 'Unknown', mechanisms: [], sequencing: [], contingencies: [], explicitRisks: [], unspecified: [], communicationStyleIsMechanism: false, requestedOutcomes: [], assertedExternalEvents: [], rationale: [], unresolvedReferences: [] }),
     ));
     expect(packet).not.toContain('One nuclear torpedo');
     expect(packet).not.toContain('nuclear-armed torpedo');

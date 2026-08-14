@@ -127,6 +127,7 @@ export const rollbackCampaign = (campaign: Campaign, committedTurn: number): Cam
       narrativeCharacters: [],
       narrativeThreads: [],
       chronicle: [],
+      aliases: {},
     };
   }
   const audit = campaign.audits.find((candidate) => candidate.turn === committedTurn);
@@ -140,6 +141,10 @@ export const rollbackCampaign = (campaign: Campaign, committedTurn: number): Cam
     narrativeCharacters: campaign.narrativeCharacters.filter((character) => character.introducedTurn <= committedTurn),
     narrativeThreads: campaign.narrativeThreads.filter((thread) => thread.updatedTurn <= committedTurn),
     chronicle: campaign.chronicle.filter((entry) => entry.turn <= committedTurn),
+    // Aliases pointing at entities materialized AFTER the rollback point must
+    // not survive the rewind.
+    aliases: Object.fromEntries(Object.entries(campaign.aliases ?? {})
+      .filter(([, targetId]) => Boolean(audit.committedStateSnapshot.entities[targetId]))),
   };
 };
 

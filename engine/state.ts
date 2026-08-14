@@ -4,12 +4,14 @@ import {
   ProposedEffect,
   StateChange,
   ValidationIssue,
+  WorldExtensionProposal,
   WorldFact,
   WorldState,
   GoalCondition,
 } from './domain';
 import { calibratedMagnitude } from './calibration';
 import { canAccess, visibility } from './visibility';
+import { applyWorldExtension } from './worldExpansion';
 
 const clamp = (value: number, min = 0, max = 100) => Math.max(min, Math.min(max, value));
 
@@ -138,9 +140,18 @@ const applyNumeric = (
 export const commitEffects = (
   prior: WorldState,
   effects: Array<EffectRecommendation | ProposedEffect>,
+  extension?: WorldExtensionProposal,
 ): { state: WorldState; changes: StateChange[]; issues: ValidationIssue[] } => {
-  const state = cloneWorld(prior);
+  let state = cloneWorld(prior);
   const changes: StateChange[] = [];
+  if (extension) {
+    // The validated world extension is replayed here so committed state derives
+    // from prior state through this single write path, and creations appear in
+    // the causal ledger.
+    const applied = applyWorldExtension(state, extension);
+    state = applied.state;
+    changes.push(...applied.changes);
+  }
 
   const record = (effect: EffectRecommendation, before: unknown, after: unknown, appliedDelta?: number) => {
     if (Object.is(before, after)) return;
@@ -344,7 +355,7 @@ export const updateBeliefsFromChanges = (
         };
       }
     }
-    if (change.targetType === 'ENTITY') {
+    if (change.targetType === 'ENTITY' && change.field !== 'create') {
       for (const observer of informed) {
         observer.beliefs[`${change.targetId}.${change.field}`] = {
           subjectId: change.targetId,

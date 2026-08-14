@@ -145,6 +145,10 @@ export const perceivedStrategyForActor = (actorId: string, graph: StrategyGraph,
   });
   return {
     objective: visible.length ? graph.objective : 'Unknown player intent',
+    requestedOutcomes: [],
+    assertedExternalEvents: [],
+    rationale: [],
+    unresolvedReferences: [],
     mechanisms: visible.map((mechanism) => detectedIds.has(mechanism.id) && !mechanism.actorIds.includes(actorId) ? {
       ...mechanism,
       objective: 'Concealed activity detected',

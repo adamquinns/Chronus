@@ -381,6 +381,65 @@ export interface StrategyGraph {
   explicitRisks: string[];
   unspecified: string[];
   communicationStyleIsMechanism: boolean;
+  requestedOutcomes: string[];
+  assertedExternalEvents: string[];
+  rationale: string[];
+  unresolvedReferences: WorldReference[];
+}
+
+export interface WorldReference {
+  mention: string;
+  kindHint?: EntityState['kind'] | 'OFFICE' | 'PLACE' | 'PROCESS';
+  clauseId: string;
+  requiredForAttempt: boolean;
+}
+
+export interface GroundedAlias {
+  alias: string;
+  targetId: Id;
+  confidence: Confidence;
+}
+
+export interface WorldExtensionProposal {
+  rationale: string;
+  entities: EntityState[];
+  relationships: RelationshipState[];
+  facts: WorldFact[];
+  arcs: ArcState[];
+  aliases: GroundedAlias[];
+  sourceRefs: string[];
+  confidence: Confidence;
+}
+
+export interface WorldExtensionAudit {
+  references: WorldReference[];
+  proposal?: WorldExtensionProposal;
+  validation: ValidationIssue[];
+  applied: boolean;
+  aliasesResolved: GroundedAlias[];
+  source: 'NONE' | 'ALIASES_ONLY' | 'FIXTURE' | 'MODEL' | 'FALLBACK' | 'MIXED';
+}
+
+export interface GroundingFixture {
+  id: Id;
+  aliases: string[];
+  existingTargetId?: Id;
+  entity?: EntityState;
+  relationships?: RelationshipState[];
+  facts?: WorldFact[];
+}
+
+/** Thrown before ANY state, RNG, actor, or resource advance: the directive
+ * contains only asserted external events and no player attempt. Non-consuming. */
+export class DirectiveRevisionError extends Error {
+  readonly kind = 'DIRECTIVE_REVISION';
+  constructor(
+    readonly playerMessage: string,
+    readonly semantics: { assertedExternalEvents: string[]; requestedOutcomes: string[] },
+  ) {
+    super(playerMessage);
+    this.name = 'DirectiveRevisionError';
+  }
 }
 
 export interface CompilerFidelity {
@@ -589,6 +648,7 @@ export interface TurnAudit {
   accessDecisions: AccessDecision[];
   detectionRecords: DetectionRecord[];
   narrativePacket?: NarrativePacket;
+  worldExtension?: WorldExtensionAudit;
 }
 
 export interface TurnNarrative {
@@ -653,11 +713,13 @@ export interface Campaign {
   narrativeCharacters: NarrativeCharacter[];
   narrativeThreads: NarrativeThread[];
   chronicle: ChronicleEntry[];
+  aliases: Record<string, Id>;
 }
 
 export interface TurnProgress {
   stage:
     | 'COMPILE'
+    | 'GROUND'
     | 'FEASIBILITY'
     | 'ACTORS'
     | 'RED_TEAM'

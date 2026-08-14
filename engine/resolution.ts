@@ -225,22 +225,70 @@ export const fallbackAdjudication = (
     direction: EffectRecommendation['direction'],
     impactClass: EffectRecommendation['impactClass'],
     cause: string,
+    dependencies: string[] = [],
   ) => {
-    if (targetId) effects.push(effect(`e_${mechanismId}_${targetId}`, mechanismId, targetId, direction, impactClass, cause));
+    if (targetId) effects.push({ ...effect(`e_${mechanismId}_${targetId}`, mechanismId, targetId, direction, impactClass, cause), dependencies });
   };
+  const playerId = state.manifest.playerId;
   for (const mechanism of graph.mechanisms) {
     const check = feasibility.find((item) => item.mechanismId === mechanism.id);
     if (check?.classification === 'IMPOSSIBLE') continue;
     if (mechanism.kind === 'DIPLOMACY') {
       pushMetric(mechanism.id, roleMetric('cohesion'), 'POSITIVE', 'MODERATE', 'A viable diplomatic mechanism preserves negotiating room.');
-      pushMetric(mechanism.id, roleMetric('escalation'), 'NEGATIVE', 'MINOR', 'Direct communication reduces adversarial pressure and miscalculation.');
+      if (mechanism.targetIds.length) {
+        pushMetric(mechanism.id, roleMetric('escalation'), 'NEGATIVE', 'MINOR', 'Direct communication reduces adversarial pressure and miscalculation.', [mechanism.targetIds[0]]);
+      }
     } else if (mechanism.kind === 'MILITARY_OPERATION' || mechanism.kind === 'COERCION') {
-      if (state.manifest.metricRoles?.escalation) {
-        pushMetric(mechanism.id, roleMetric('escalation'), 'POSITIVE', 'MAJOR', 'Military pressure increases escalation and misperception risk.');
+      // Rule: rhetoric never reaches the escalation metric directly. Escalation
+      // requires a typed causal path — a military operation, or coercion aimed
+      // at a military/state actor. Domestic or personal coercion lands on the
+      // objects nearest the action instead.
+      const foreignPressureTarget = mechanism.targetIds.find((targetId) => {
+        const target = state.entities[targetId];
+        return target && (target.kind === 'MILITARY' || target.kind === 'STATE');
+      });
+      const escalationApplies = Boolean(state.manifest.metricRoles?.escalation)
+        && (mechanism.kind === 'MILITARY_OPERATION' || Boolean(foreignPressureTarget));
+      if (escalationApplies) {
+        const dependency = foreignPressureTarget ?? mechanism.targetIds[0];
+        pushMetric(mechanism.id, roleMetric('escalation'), 'POSITIVE', 'MAJOR', 'Military pressure increases escalation and misperception risk.', dependency ? [dependency] : Object.keys(state.arcs).slice(0, 1));
         pushMetric(mechanism.id, roleMetric('support'), 'POSITIVE', 'MINOR', 'A forceful response temporarily reassures supporters.');
       } else {
-        pushMetric(mechanism.id, roleMetric('oppositionMomentum'), 'NEGATIVE', 'MODERATE', 'Available operational pressure contests the opponent’s current initiative.');
-        pushMetric(mechanism.id, roleMetric('cohesion'), 'NEGATIVE', 'MINOR', 'Executing pressure consumes organizational readiness and cohesion.');
+        const targetId = mechanism.targetIds[0];
+        const relationship = targetId ? Object.values(state.relationships).find((candidate) =>
+          (candidate.fromId === playerId && candidate.toId === targetId) || (candidate.toId === playerId && candidate.fromId === targetId)) : undefined;
+        if (relationship) {
+          effects.push({
+            id: `e_${mechanism.id}_${relationship.id}_trust`,
+            mechanismId: mechanism.id,
+            targetType: 'RELATIONSHIP',
+            targetId: relationship.id,
+            field: 'trust',
+            direction: 'NEGATIVE',
+            impactClass: 'MODERATE',
+            confidence: 'MEDIUM',
+            engagement: 'ENGAGES',
+            cause: 'Coercive pressure damages trust with the targeted actor even when the demand is heard.',
+            dependencies: [targetId!],
+          });
+        } else if (targetId && state.entities[targetId]) {
+          effects.push({
+            id: `e_${mechanism.id}_${targetId}_resolve`,
+            mechanismId: mechanism.id,
+            targetType: 'ENTITY',
+            targetId,
+            field: 'resolve',
+            direction: 'NEGATIVE',
+            impactClass: 'MINOR',
+            confidence: 'MEDIUM',
+            engagement: 'ENGAGES_WEAKLY',
+            cause: 'Pressure tests the target’s resolve without any established channel of trust to damage.',
+            dependencies: [targetId],
+          });
+        } else {
+          pushMetric(mechanism.id, roleMetric('oppositionMomentum'), 'NEGATIVE', 'MODERATE', 'Available operational pressure contests the opponent’s current initiative.');
+        }
+        pushMetric(mechanism.id, roleMetric('support'), 'NEGATIVE', 'MINOR', 'Visible strong-arming unsettles allies and observers.', targetId ? [targetId] : []);
       }
     } else if (mechanism.kind === 'INTELLIGENCE') {
       pushMetric(mechanism.id, roleMetric('intelligence'), 'POSITIVE', 'MODERATE', 'Focused collection improves decision-relevant information.');
@@ -287,7 +335,8 @@ export const fallbackAdjudication = (
         proposedDelta: -claim.amount,
       });
     } else {
-      pushMetric(mechanism.id, Object.keys(state.metrics)[0], 'POSITIVE', 'TRIVIAL', 'The underspecified initiative creates only limited strategic movement.');
+      const fallbackMetricId = Object.keys(state.metrics).find((id) => id !== state.manifest.metricRoles?.escalation) ?? Object.keys(state.metrics)[0];
+      pushMetric(mechanism.id, fallbackMetricId, 'POSITIVE', 'TRIVIAL', 'The underspecified initiative creates only limited strategic movement.', mechanism.targetIds.slice(0, 1));
     }
   }
   const initiativeEffectIds: string[] = [];
@@ -326,6 +375,7 @@ export const fallbackAdjudication = (
         'MINOR',
         `${state.entities[action.actorId]?.name ?? action.actorId} acts on its own initiative: ${action.action}`,
       ),
+      dependencies: [action.actorId],
       actorId: action.actorId,
     });
     initiativeEffectIds.push(id);
@@ -386,7 +436,7 @@ export const adjudicate = async (
     const result = await gateway.callJson('adjudicator', [
       {
         role: 'system',
-        content: 'Adjudicate causal mechanisms, not rhetoric. Hard state is authoritative. Recommend bounded impact classes, never arbitrary point values. Use only existing targets. Actor responses are additional causal forces and may use mechanismId actor:<actorId>; player effects must use a supplied strategy mechanism ID. Every recommended effect must include a non-empty cause string and dependencies array (use [] when none). A good plan may fail; a bad plan may occasionally succeed. Do not invent capabilities. Be concise: reasons under 80 words, at most 12 effects and 5 outcome bands. Probabilities must sum approximately to 1 and reference recommended effect IDs.',
+        content: 'Adjudicate causal mechanisms, not rhetoric. Hard state is authoritative. Recommend bounded impact classes, never arbitrary point values. Use only existing targets. Actor responses are additional causal forces and may use mechanismId actor:<actorId>; player effects must use a supplied strategy mechanism ID. Every recommended effect must include a non-empty cause string and dependencies array (use [] when none). Any effect on the scenario’s escalation metric MUST include at least one non-metric dependency (an entity, relationship, arc, process, or another effect id) forming its causal path — words like force or immediately never justify escalation by themselves. The dryStrategy’s requestedOutcomes are objectives, never effects; its assertedExternalEvents must not be treated as true. A good plan may fail; a bad plan may occasionally succeed. Do not invent capabilities. Be concise: reasons under 80 words, at most 12 effects and 5 outcome bands. Probabilities must sum approximately to 1 and reference recommended effect IDs.',
       },
       { role: 'user', content: JSON.stringify(prompt) },
     ], adjudicationSchema, 'Adjudication');

@@ -14,7 +14,7 @@ import { OutcomeBand, StrategyGraph } from '../domain';
 const concealedGraph: StrategyGraph = {
   objective: 'Build a private coalition',
   mechanisms: [{ id: 'secret', kind: 'COALITION_BUILDING', objective: 'Recruit quietly', targetIds: ['khrushchev'], actorIds: ['kennedy'], dependencies: [], assumptions: [], sequence: 0, durationTurns: 1, resourceClaims: [], specifiedDetail: 'private recruitment', concealed: true }],
-  sequencing: [], contingencies: [], explicitRisks: [], unspecified: [], communicationStyleIsMechanism: false,
+  sequencing: [], contingencies: [], explicitRisks: [], unspecified: [], communicationStyleIsMechanism: false, requestedOutcomes: [], assertedExternalEvents: [], rationale: [], unresolvedReferences: [],
 };
 
 describe('completion invariants', () => {

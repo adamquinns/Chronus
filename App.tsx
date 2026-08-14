@@ -6,7 +6,7 @@ import { GameConsole } from './components/GameConsole';
 import { JournalDrawer } from './components/JournalDrawer';
 import { ResolvingScreen } from './components/ResolvingScreen';
 import { SavedCampaignSummary, ScenarioMenu } from './components/ScenarioMenu';
-import { Campaign, TurnOption, TurnPreview, TurnProgress } from './engine/domain';
+import { Campaign, DirectiveRevisionError, TurnOption, TurnPreview, TurnProgress } from './engine/domain';
 import { generateCustomScenario } from './engine/authoring';
 import { OpenRouterGateway } from './engine/model';
 import { generateTurnOptions } from './engine/options';
@@ -42,6 +42,7 @@ const App: React.FC = () => {
   const [pendingCampaign, setPendingCampaign] = useState<Campaign>();
   const [error, setError] = useState<string>();
   const [journalOpen, setJournalOpen] = useState(false);
+  const [revisionNotice, setRevisionNotice] = useState<string>();
   const [consultOpen, setConsultOpen] = useState(false);
   const [consultAdvisorId, setConsultAdvisorId] = useState<string>();
   const [generating, setGenerating] = useState(false);
@@ -97,6 +98,7 @@ const App: React.FC = () => {
     setProgress([]);
     setPendingCampaign(undefined);
     setError(undefined);
+    setRevisionNotice(undefined);
     setScreen('RESOLVING');
     try {
       const result = await runTurn(campaign, text.trim(), {
@@ -107,7 +109,15 @@ const App: React.FC = () => {
         onProgress: (item) => setProgress((current) => [...current.filter((entry) => entry.stage !== item.stage), item]),
       });
       setPendingCampaign(result.campaign);
-    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Turn resolution failed.'); }
+    } catch (caught) {
+      if (caught instanceof DirectiveRevisionError) {
+        // Non-consuming: nothing advanced. Return to the console for revision.
+        setRevisionNotice(caught.playerMessage);
+        setScreen('PLAYING');
+        return;
+      }
+      setError(caught instanceof Error ? caught.message : 'Turn resolution failed.');
+    }
   };
 
   const advance = async () => {
@@ -186,6 +196,7 @@ const App: React.FC = () => {
     <GameConsole
       turn={model}
       historyCount={history.length}
+      revisionNotice={revisionNotice}
       anyOverlayOpen={journalOpen || consultOpen || developerOpen}
       onCommit={({ choiceText }) => resolve(choiceText)}
       onOpenJournal={() => setJournalOpen(true)}

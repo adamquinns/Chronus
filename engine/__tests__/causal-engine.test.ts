@@ -92,7 +92,7 @@ describe('information boundaries', () => {
         id: 'm1', kind: 'INTELLIGENCE', objective: 'Covertly inspect readiness', targetIds: ['khrushchev'], actorIds: ['kennedy'],
         dependencies: [], assumptions: [], sequence: 0, durationTurns: 1, resourceClaims: [], specifiedDetail: 'covert collection',
       }],
-      sequencing: ['m1'], contingencies: [], explicitRisks: [], unspecified: [], communicationStyleIsMechanism: false,
+      sequencing: ['m1'], contingencies: [], explicitRisks: [], unspecified: [], communicationStyleIsMechanism: false, requestedOutcomes: [], assertedExternalEvents: [], rationale: [], unresolvedReferences: [],
     };
     expect(perceivedStrategyForActor('khrushchev', graph).mechanisms).toHaveLength(0);
   });
