@@ -18,7 +18,9 @@
     "eval:multiturn": "node --import tsx evals/multiturn-live.ts",
     "eval:aggregate": "node --import tsx evals/aggregate.ts",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "deploy": "gh-pages -d dist",
+    "eval:matrix": "node --import tsx evals/preset-matrix.ts",
+    "eval:dynamic": "node --import tsx evals/dynamic-world-live.ts"
   },
   "dependencies": {
     "idb": "^8.0.3",

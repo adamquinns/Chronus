@@ -27,7 +27,7 @@ const clauses = (directive: string) => deRhetoricize(directive)
   .filter(Boolean)
   .slice(0, 10);
 
-const inferKind = (text: string): StrategyMechanism['kind'] => {
+export const inferMechanismKind = (text: string): StrategyMechanism['kind'] => {
   if (/transfer|allocate|fund|budget|move \$|send .* supplies/i.test(text)) return 'RESOURCE_TRANSFER';
   if (/^\s*(?:order|direct|authorize|instruct|command)\b/i.test(text)) return 'DIRECT_ORDER';
   if (/negotiate|offer|backchannel|diplom|contact|call|letter|signal .*proposal/i.test(text)) return 'DIPLOMACY';
@@ -71,7 +71,7 @@ const resourceClaims = (text: string, state: WorldState) => {
 const ATTEMPT_LEAD = /^(?:i|we|i'm|i am|i'll|i will|my|our|let's|have|order|ask|call|phone|contact|send|write|draft|demand|offer|announce|declare|prepare|investigate|authorize|instruct|direct|tell|negotiate|deploy|move|allocate|transfer|fund|recruit|organize|convene|meet|brief|publicly|privately|quietly|secretly|immediately|urgently|begin|start|launch|signal|propose|request|press|pressure|lobby|persuade|convince|warn|threaten|delay|pause|keep|use|concentrate|hold|reinforce|probe|inspect|gather|sound out|reach out)\b/i;
 
 /** Verbs that declare another actor's behavior or an outcome as already decided. */
-const EXTERNAL_EVENT = /\b(?:freaks?(?:\s+out)?|panics?|agrees?|complies|resigns?|surrenders?|defects?|approves?|endorses?|withdraws?|backs?\s+down|capitulates?|flees|steps?\s+down|will\s+(?:be|resign|comply|agree|approve|surrender|withdraw|endorse|step\s+down)|is\s+(?:resigning|complying|agreeing|surrendering|withdrawing))\b/i;
+const EXTERNAL_EVENT = /\b(?:freaks?(?:\s+out)?|panics?|agrees?|complies|resigns?|surrenders?|defects?|approves?|endorses?|withdraws?|backs?\s+down|capitulates?|flees|flies|travels|departs|arrives|celebrates?|decides?|chooses?|refuses?|steps?\s+down|will\s+(?:be|resign|comply|agree|approve|surrender|withdraw|endorse|step\s+down)|is\s+(?:resigning|complying|agreeing|surrendering|withdrawing))\b/i;
 
 export const classifyClause = (clause: string): 'ATTEMPT' | 'ASSERTED_EXTERNAL' | 'RATIONALE' => {
   const trimmed = clause.trim();
@@ -101,7 +101,7 @@ export const compileDeterministically = (directive: string, state: WorldState): 
   const parts = allParts.filter((part) => part.category === 'ATTEMPT').map((part) => part.clause);
   const mechanisms = parts.map((part, index): StrategyMechanism => ({
     id: `m${index + 1}`,
-    kind: inferKind(part),
+    kind: inferMechanismKind(part),
     objective: part,
     targetIds: referencedIds(part, state),
     actorIds: [state.manifest.playerId],
@@ -109,9 +109,9 @@ export const compileDeterministically = (directive: string, state: WorldState): 
     assumptions: [],
     sequence: index,
     durationTurns: /prepare|build|recruit|develop|long.term/i.test(part) ? 2 : 1,
-    resourceClaims: inferKind(part) === 'RESOURCE_TRANSFER' ? resourceClaims(part, state) : [],
+    resourceClaims: inferMechanismKind(part) === 'RESOURCE_TRANSFER' ? resourceClaims(part, state) : [],
     specifiedDetail: part,
-    concealed: inferKind(part) === 'DECEPTION' || /secret|quietly|privately|covert|conceal/i.test(part),
+    concealed: inferMechanismKind(part) === 'DECEPTION' || /secret|quietly|privately|covert|conceal/i.test(part),
   }));
   return {
     objective: parts[0] ?? directive.trim(),

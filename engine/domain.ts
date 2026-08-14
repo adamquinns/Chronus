@@ -649,6 +649,8 @@ export interface TurnAudit {
   detectionRecords: DetectionRecord[];
   narrativePacket?: NarrativePacket;
   worldExtension?: WorldExtensionAudit;
+  playerForecast?: PlayerForecast;
+  forecastScore?: ForecastScore;
 }
 
 export interface TurnNarrative {
@@ -723,6 +725,7 @@ export interface Campaign {
   narrativeThreads: NarrativeThread[];
   chronicle: ChronicleEntry[];
   aliases: Record<string, Id>;
+  forecastRecord: ForecastRecord;
 }
 
 export interface TurnProgress {
@@ -768,6 +771,36 @@ export interface AdvisorAssessment {
   assessment: string;
   confidence: Confidence;
   biasDisclosure: string;
+}
+
+export type ForecastOutcome = 'SETBACK' | 'MIXED' | 'SUCCESS' | 'STRONG_SUCCESS';
+export type ForecastActorStance = 'ESCALATES' | 'HOLDS' | 'ENGAGES';
+
+/** Captured at directive commit, BEFORE resolution. Never enters any model
+ * prompt before state commit (Invariant 7) — it is scored mechanically. */
+export interface PlayerForecast {
+  outcome: ForecastOutcome;
+  actorPredictions: Array<{ actorId: Id; stance: ForecastActorStance }>;
+  freeText?: string;
+}
+
+export interface ForecastScore {
+  predictedOutcome: ForecastOutcome;
+  actualOutcome: ForecastOutcome;
+  outcomeResult: 'HIT' | 'ADJACENT' | 'MISS';
+  actorResults: Array<{ actorId: Id; predicted: ForecastActorStance; actual: ForecastActorStance; correct: boolean }>;
+  freeText?: string;
+}
+
+export interface ForecastRecord {
+  forecasts: number;
+  hits: number;
+  adjacents: number;
+  actorPredictions: number;
+  actorHits: number;
+  /** Signed sum of (predicted − actual) outcome buckets: positive means the
+   * player systematically over-predicts success. */
+  outcomeBiasSum: number;
 }
 
 export interface TurnResult {

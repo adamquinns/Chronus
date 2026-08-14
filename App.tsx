@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ApiKeyGateway } from './components/ApiKeyGateway';
 import { ConsultCabinetModal } from './components/ConsultCabinetModal';
 import { Debrief } from './components/Debrief';
@@ -6,13 +6,14 @@ import { GameConsole } from './components/GameConsole';
 import { JournalDrawer } from './components/JournalDrawer';
 import { ResolvingScreen } from './components/ResolvingScreen';
 import { SavedCampaignSummary, ScenarioMenu } from './components/ScenarioMenu';
-import { Campaign, DirectiveRevisionError, TurnOption, TurnPreview, TurnProgress } from './engine/domain';
+import { Campaign, DirectiveRevisionError, EntityState, PlayerForecast, TurnOption, TurnPreview, TurnProgress } from './engine/domain';
 import { generateCustomScenario } from './engine/authoring';
-import { OpenRouterGateway } from './engine/model';
+import { MODEL_PRESETS, ModelPresetName, OpenRouterGateway } from './engine/model';
 import { generateTurnOptions } from './engine/options';
+import { attachForecast } from './engine/forecast';
 import { runTurn } from './engine/pipeline';
 import { createCampaign } from './engine/scenarios';
-import { deleteCampaign, exportCampaign, importCampaign, listCampaigns, loadCampaign, saveCampaign } from './engine/persistence';
+import { deleteCampaign, exportCampaign, getSetting, importCampaign, listCampaigns, loadCampaign, saveCampaign, setSetting } from './engine/persistence';
 import { buildConsoleModel, buildHistoryModel } from './engine/viewModel';
 import { isDeveloperAuditEnabled } from './components/playerVisibility';
 import { T3 } from './theme';
@@ -43,18 +44,27 @@ const App: React.FC = () => {
   const [error, setError] = useState<string>();
   const [journalOpen, setJournalOpen] = useState(false);
   const [revisionNotice, setRevisionNotice] = useState<string>();
+  const forecastRef = useRef<PlayerForecast>();
+  const pendingResult = useRef<Awaited<ReturnType<typeof runTurn>>>();
+  const [forecastSettled, setForecastSettled] = useState(false);
   const [consultOpen, setConsultOpen] = useState(false);
   const [consultAdvisorId, setConsultAdvisorId] = useState<string>();
   const [generating, setGenerating] = useState(false);
   const [developerOpen, setDeveloperOpen] = useState(false);
+  const [preset, setPreset] = useState<ModelPresetName>('standard');
   const [developerTurn, setDeveloperTurn] = useState(0);
 
-  const gateway = useMemo(() => apiKey && !demoMode ? new OpenRouterGateway(apiKey, undefined, {
+  const gateway = useMemo(() => apiKey && !demoMode ? new OpenRouterGateway(apiKey, MODEL_PRESETS[preset], {
     maxUsd: 3,
     maxRequests: 18,
     maxInputTokens: 120_000,
     maxOutputTokens: 40_000,
-  }) : undefined, [apiKey, demoMode, campaign?.state.turn]);
+  }) : undefined, [apiKey, demoMode, preset, campaign?.state.turn]);
+  useEffect(() => {
+    getSetting<ModelPresetName>('modelPreset')
+      .then((stored) => { if (stored && stored in MODEL_PRESETS) setPreset(stored); })
+      .catch(console.error);
+  }, []);
   const developerEnabled = isDeveloperAuditEnabled(import.meta.env.DEV, import.meta.env.VITE_ENABLE_DEVELOPER_AUDIT);
 
   const refreshSessions = async () => setSessions((await listCampaigns()).filter((item) => ['cuban_missile_crisis_black_saturday', 'american_twilight'].some((scenarioId) => item.id.startsWith(scenarioId === 'cuban_missile_crisis_black_saturday' ? 'cmc_' : scenarioId)) || ['Midnight in Havana', 'Twilight of the Republic'].includes(item.title)));
@@ -99,6 +109,9 @@ const App: React.FC = () => {
     setPendingCampaign(undefined);
     setError(undefined);
     setRevisionNotice(undefined);
+    forecastRef.current = undefined;
+    pendingResult.current = undefined;
+    setForecastSettled(false);
     setScreen('RESOLVING');
     try {
       const result = await runTurn(campaign, text.trim(), {
@@ -108,11 +121,12 @@ const App: React.FC = () => {
         onPreview: setPreview,
         onProgress: (item) => setProgress((current) => [...current.filter((entry) => entry.stage !== item.stage), item]),
       });
+      pendingResult.current = result;
       setPendingCampaign(result.campaign);
     } catch (caught) {
-      if (caught instanceof DirectiveRevisionError) {
+      if (caught instanceof DirectiveRevisionError || (caught as { kind?: string })?.kind === 'DIRECTIVE_REVISION') {
         // Non-consuming: nothing advanced. Return to the console for revision.
-        setRevisionNotice(caught.playerMessage);
+        setRevisionNotice((caught as { playerMessage?: string }).playerMessage ?? (caught as Error).message);
         setScreen('PLAYING');
         return;
       }
@@ -122,7 +136,13 @@ const App: React.FC = () => {
 
   const advance = async () => {
     if (!pendingCampaign) return;
-    setCampaign(pendingCampaign);
+    // Score the forecast only now — after resolution, before the player has
+    // seen the outcome. Structurally cannot influence adjudication.
+    const settled = forecastRef.current && pendingResult.current
+      ? attachForecast(pendingResult.current, forecastRef.current).campaign
+      : pendingCampaign;
+    if (forecastRef.current && pendingResult.current) await saveCampaign(settled).catch(console.error);
+    setCampaign(settled);
     setPendingCampaign(undefined);
     setOptions([]);
     setScreen('PLAYING');
@@ -169,18 +189,36 @@ const App: React.FC = () => {
 
   if (!campaign) return null;
 
-  if (screen === 'RESOLVING') return <ResolvingScreen
+  const model = buildConsoleModel(campaign, options);
+
+  if (screen === 'RESOLVING') return <><ResolvingScreen
     directive={directive}
     preview={preview}
     progress={progress}
     resolved={Boolean(pendingCampaign)}
     error={error}
+    morningPaper={campaign?.audits.at(-1)?.narrative.pressCoverage}
+    forecastActors={Object.values<EntityState>(campaign.state.entities)
+      .filter((entity) => entity.id !== campaign.state.manifest.playerId && entity.status === 'ACTIVE')
+      .slice(0, 2)
+      .map((entity) => ({ id: entity.id, name: entity.name }))}
+    forecastSubmitted={forecastSettled}
+    onSubmitForecast={(value) => { forecastRef.current = value; setForecastSettled(true); }}
+    onSkipForecast={() => setForecastSettled(true)}
+    onOpenConsult={() => setConsultOpen(true)}
     onAdvance={advance}
     onRetry={() => resolve(directive)}
     onAbort={() => setScreen('PLAYING')}
-  />;
+  />
+    {consultOpen && <ConsultCabinetModal
+      turn={model}
+      campaign={campaign}
+      gateway={gateway}
+      initialAdvisorId={consultAdvisorId}
+      onClose={() => setConsultOpen(false)}
+    />}
+  </>;
 
-  const model = buildConsoleModel(campaign, options);
   const history = buildHistoryModel(campaign);
   if (campaign.state.gameOver && model.goalResult) return <Debrief
     result={model.goalResult}
@@ -203,6 +241,23 @@ const App: React.FC = () => {
       onOpenConsult={(advisorId) => { setConsultAdvisorId(advisorId); setConsultOpen(true); }}
     />
     <div style={{ position: 'fixed', right: 12, bottom: 72, zIndex: T3.zSticky, display: 'flex', gap: 6 }}>
+      <span title="Session model spend" style={{ ...utilityButton, cursor: 'default' }}>
+        ${campaign.audits.reduce((sum, audit) => sum + audit.estimatedCostUsd, 0).toFixed(2)}
+      </span>
+      <select
+        aria-label="Model routing preset"
+        value={preset}
+        onChange={(event) => {
+          const value = event.target.value as ModelPresetName;
+          setPreset(value);
+          setSetting('modelPreset', value).catch(console.error);
+        }}
+        style={{ ...utilityButton, cursor: 'pointer' }}
+      >
+        <option value="economy">Economy</option>
+        <option value="standard">Standard</option>
+        <option value="cinematic">Cinematic</option>
+      </select>
       <button onClick={() => download(`chronus-${campaign.state.campaignId}.json`, exportCampaign(campaign))} style={utilityButton}>Export</button>
       {developerEnabled && <button onClick={() => setDeveloperOpen(true)} style={utilityButton}>Developer audit</button>}
       <button onClick={() => { setScreen('MENU'); refreshSessions().catch(console.error); }} style={utilityButton}>Timelines</button>

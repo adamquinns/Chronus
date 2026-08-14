@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { reconstructCommittedTurn } from '../engine/audit';
 import { classifyTurnDepth, compileDeterministically, compileStrategy } from '../engine/compiler';
 import { ImpactClass } from '../engine/domain';
-import { ModelBudget, OpenRouterGateway } from '../engine/model';
+import { MODEL_PRESETS, ModelPresetName, ModelBudget, OpenRouterGateway } from '../engine/model';
 import { buildOptionPrompt, generateTurnOptions } from '../engine/options';
 import { runTurn } from '../engine/pipeline';
 import { playerVisibleState } from '../engine/projections';
@@ -22,7 +22,11 @@ const sharedBudget = new ModelBudget({
   maxInputTokens: 850_000,
   maxOutputTokens: 220_000,
 });
-const freshGateway = () => new OpenRouterGateway(apiKey, undefined, sharedBudget);
+const presetIndex = process.argv.indexOf('--preset');
+const presetArg = presetIndex >= 0 ? process.argv[presetIndex + 1] : undefined;
+if (presetArg && !(presetArg in MODEL_PRESETS)) throw new Error(`Unknown preset "${presetArg}". Valid: ${Object.keys(MODEL_PRESETS).join(', ')}.`);
+const preset = (presetArg ?? 'standard') as ModelPresetName;
+const freshGateway = () => new OpenRouterGateway(apiKey, MODEL_PRESETS[preset], sharedBudget);
 const gateway = freshGateway();
 
 interface EvalResult {
@@ -213,6 +217,7 @@ const run = async () => {
   const usage = sharedBudget.snapshot();
   const report = {
     generatedAt: new Date().toISOString(),
+    preset,
     passed: results.filter((item) => item.passed).length,
     failed: results.filter((item) => !item.passed).length,
     usage,
@@ -220,7 +225,7 @@ const run = async () => {
     modelRoutes: gateway.routes,
     results,
   };
-  await writeFile('evals/results/latest.json', JSON.stringify(report, null, 2));
+  await writeFile(presetArg ? `evals/results/live-${preset}.json` : 'evals/results/latest.json', JSON.stringify(report, null, 2));
   console.log(`\n${report.passed}/${results.length} evals passed. Requests: ${usage.requests}. OpenRouter-reported cost: $${usage.costUsd.toFixed(4)}.`);
   if (report.failed) process.exitCode = 1;
 };

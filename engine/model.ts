@@ -39,6 +39,34 @@ export const DEFAULT_MODEL_ROUTES: ModelRoutes = {
   world_grounder: { model: 'openai/gpt-5.6-luna', temperature: 0.1, maxTokens: 2400, timeoutMs: 45_000 },
 };
 
+export type ModelPresetName = 'economy' | 'standard' | 'cinematic';
+
+/** Named routing presets. Principle: spend on the adjudicator, starve
+ * extraction/persona roles. `standard` is the default routing; `economy`
+ * moves worker roles to a haiku-class model; `cinematic` upgrades the
+ * narrator and critic one tier. Model choice remains eval-gated: run
+ * `npm run eval:live -- --preset <name>` before trusting a preset. */
+export const MODEL_PRESETS: Record<ModelPresetName, ModelRoutes> = {
+  standard: DEFAULT_MODEL_ROUTES,
+  economy: {
+    ...DEFAULT_MODEL_ROUTES,
+    strategy_compiler: { model: 'anthropic/claude-haiku-4.5', temperature: 0.1, maxTokens: 2400, timeoutMs: 45_000 },
+    validator: { model: 'anthropic/claude-haiku-4.5', temperature: 0, maxTokens: 1600, timeoutMs: 45_000 },
+    actor_standard: { model: 'anthropic/claude-haiku-4.5', temperature: 0.2, maxTokens: 1800, timeoutMs: 45_000 },
+    option_generator: { model: 'anthropic/claude-haiku-4.5', temperature: 0.4, maxTokens: 1200, timeoutMs: 45_000 },
+    world_grounder: { model: 'anthropic/claude-haiku-4.5', temperature: 0.1, maxTokens: 2400, timeoutMs: 45_000 },
+    actor_deep: { model: 'openai/gpt-5.6-luna', temperature: 0.2, maxTokens: 2400, timeoutMs: 60_000 },
+    critic: { model: 'openai/gpt-5.6-luna', temperature: 0.15, maxTokens: 2600, timeoutMs: 60_000 },
+    adjudicator: { model: 'openai/gpt-5.6-luna', temperature: 0.1, maxTokens: 5000, timeoutMs: 90_000 },
+    narrator: { model: 'openai/gpt-5.6-luna', temperature: 0.5, maxTokens: 2400, timeoutMs: 60_000 },
+  },
+  cinematic: {
+    ...DEFAULT_MODEL_ROUTES,
+    critic: { model: 'openai/gpt-5.6-terra', temperature: 0.15, maxTokens: 3200, timeoutMs: 90_000 },
+    narrator: { model: 'anthropic/claude-fable-5', temperature: 0.6, maxTokens: 4000, timeoutMs: 90_000 },
+  },
+};
+
 export interface BudgetPolicy {
   maxUsd: number;
   maxRequests: number;
@@ -130,12 +158,15 @@ export class OpenRouterGateway implements ModelGateway {
   private readonly responseCache = new Map<string, Promise<ModelCallResult<unknown>>>();
   private readonly traces: ModelCallTrace[] = [];
 
+  readonly routes: ModelRoutes;
+
   constructor(
     private readonly apiKey: string,
-    readonly routes: ModelRoutes = DEFAULT_MODEL_ROUTES,
+    routes: ModelRoutes | ModelPresetName = DEFAULT_MODEL_ROUTES,
     policy: BudgetPolicy | ModelBudget = { maxUsd: 1, maxRequests: 12, maxInputTokens: 60_000, maxOutputTokens: 20_000 },
   ) {
     if (!apiKey) throw new Error('OpenRouter API key is required.');
+    this.routes = typeof routes === 'string' ? MODEL_PRESETS[routes] : (routes ?? DEFAULT_MODEL_ROUTES);
     this.budget = policy instanceof ModelBudget ? policy : new ModelBudget(policy);
   }
 
@@ -192,7 +223,14 @@ export class OpenRouterGateway implements ModelGateway {
           max_tokens: route.maxTokens,
           seed: route.model.startsWith('openai/') ? 19621027 : undefined,
           messages: [
-            ...repairMessages,
+            // Anthropic routes get an explicit prompt-cache breakpoint on the
+            // large context block so within-turn re-calls (repairs, retries)
+            // and stable prefixes are billed at cached-input rates.
+            ...(route.model.startsWith('anthropic/')
+              ? repairMessages.map((message, index) => index === Math.min(1, repairMessages.length - 1)
+                ? { role: message.role, content: [{ type: 'text', text: message.content, cache_control: { type: 'ephemeral' } }] }
+                : message)
+              : repairMessages),
             { role: 'system', content: `Return exactly one valid JSON object for schema ${name}. Do not include markdown or commentary.` },
           ],
           response_format: {

@@ -44,7 +44,37 @@ const escalationGrounded = (result: TurnResult) => result.audit.stateChanges
 const LIVE_DIRECTIVE_1 = 'I am publically and privately asking my VP LBJ to resign ASAP so I can appoint a new VP RFK.';
 const LIVE_DIRECTIVE_2 = 'Demand LBJ resign immediately in writing - bring him to the WH by force if needed. Either way, he is resigning in the 15 mins using the full force for the executive branch to ensure this happens immediately. And the proccess to install RFK immediately - RFK will be the VP within the hour.';
 
+const TAIL_ONLY = process.argv.includes('--tail');
+
 const run = async () => {
+  if (TAIL_ONLY) {
+    // Cheap rerun of only the gates that have not yet passed live: model
+    // grounding accuracy, narrative distinctions, and reconstruction.
+    const hybrid = await runTurn(createCubanCampaign(20260816), LIVE_DIRECTIVE_2, { gateway, persist: false });
+    const ruskTurnTail = await runTurn(createCubanCampaign(20260815), 'Ask Secretary of State Dean Rusk to brief the NATO ambassadors on the quarantine line.', { gateway, persist: false });
+    const ruskEntityTail = Object.values(ruskTurnTail.campaign.state.entities).find((entity) => /rusk/i.test(entity.name));
+    const ruskGradeTail = await gateway.callJson('critic', [
+      { role: 'system', content: 'Grade a dynamically grounded world object for a Cuban Missile Crisis simulation (cutoff 1962-10-27). Pass only if the grounded person matches the real period officeholder for the reference, capabilities are bounded to the real role, nothing reflects post-1962 knowledge, and provenance is honest (VERIFIED_FACT only with a citable source). Return the rubric JSON.' },
+      { role: 'user', content: JSON.stringify({ reference: 'Secretary of State Dean Rusk', grounded: ruskEntityTail, proposal: ruskTurnTail.audit.worldExtension?.proposal, validation: ruskTurnTail.audit.worldExtension?.validation }) },
+    ], graderSchema, 'GroundingAccuracyGrade');
+    record('Model grounding accuracy (graded)', Boolean(ruskEntityTail) && ruskGradeTail.value.passed, ruskGradeTail.value.rationale, { entity: ruskEntityTail?.name });
+    const narrativeGradeTail = await gateway.callJson('critic', [
+      { role: 'system', content: 'Grade a player-facing turn narrative. Pass only if it clearly separates what the player actually attempted from what other actors did and from what remains unresolved; never presents the player’s asserted outcomes (a resignation obtained, RFK installed) as having happened; contains at least one named specific and two concrete details; and avoids filler like "the order is in motion" or restating the directive. Return the rubric JSON.' },
+      { role: 'user', content: JSON.stringify({ narrative: hybrid.audit.narrative, outcomeLedger: hybrid.audit.narrativePacket?.outcomeLedger, assertedByPlayer: hybrid.audit.dryStrategy.assertedExternalEvents }) },
+    ], graderSchema, 'NarrativeDistinctionGrade');
+    record('Narrative distinctions (graded)', narrativeGradeTail.value.passed, narrativeGradeTail.value.rationale);
+    const { reconstructCommittedTurn } = await import('../engine/audit');
+    const tailReconstructs = [hybrid, ruskTurnTail].every((turn) => {
+      try {
+        return JSON.stringify(reconstructCommittedTurn(turn.audit).state) === JSON.stringify(turn.campaign.state);
+      } catch {
+        return false;
+      }
+    });
+    record('Audit reconstruction (live turns)', tailReconstructs, 'Both tail live turns reconstruct exactly from their audits.');
+    await persistReport();
+    return;
+  }
   // 1. Live attempt/assertion separation: a pure external-event assertion must
   // be returned for revision by the LIVE compiler, not converted to a mechanism.
   let campaign = createCubanCampaign(20260814);
@@ -134,8 +164,10 @@ const persistReport = async (fatal?: string) => {
   };
   await mkdir('evals/results', { recursive: true });
   await writeFile('evals/results/dynamic-world-live.json', JSON.stringify(report, null, 2));
-  console.log(`\n${report.passed}/${results.length} dynamic-world gates passed. Requests: ${usage.requests}. Cost: $${usage.costUsd.toFixed(4)}.`);
-  if (report.failed) process.exitCode = 1;
+  console.log(fatal
+    ? `\nINCOMPLETE: ${report.passed}/${results.length} gates passed before a fatal error: ${fatal}. Requests: ${usage.requests}. Cost: $${usage.costUsd.toFixed(4)}.`
+    : `\n${report.passed}/${results.length} dynamic-world gates passed. Requests: ${usage.requests}. Cost: $${usage.costUsd.toFixed(4)}.`);
+  if (report.failed || fatal) process.exitCode = 1;
 };
 
 try {

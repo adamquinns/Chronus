@@ -474,6 +474,9 @@ export const sanitizeAdjudication = (
     if (!validTargets[candidate.targetType].has(candidate.targetId)) return false;
     if (depth !== 'DEEP' && (candidate.impactClass === 'SEVERE' || candidate.impactClass === 'SYSTEMIC')) return false;
     if (candidate.proposedDelta !== undefined && candidate.targetType !== 'RESOURCE') return false;
+    // Repair-by-omission: a commitments effect without a commitment string is
+    // malformed flavor, never worth aborting a turn over.
+    if (candidate.targetType === 'RELATIONSHIP' && candidate.field === 'commitments' && typeof candidate.setValue !== 'string') return false;
     return true;
   });
   if (!graph) {
@@ -632,7 +635,7 @@ export const narrate = async (
           title: directiveTitle,
           execution: `Staff broke the directive into its specified procedures: ${mechanismDetails || packet.rawDirective}. Execution does not itself prove an external result.`,
           worldReaction: actorSentence,
-          consequence: `The order is in motion, but only committed player-visible changes count as history.`,
+          consequence: `Only what the world has actually answered is recorded below; the rest remains an open instruction.`,
           advisorVerb: 'tests the stated procedure against',
           report: `The staff record preserves the directive’s separate steps without supplying a missing target, reply, or outcome.`,
           pending: `The next report must supply an attributable observation before the world state can change.`,

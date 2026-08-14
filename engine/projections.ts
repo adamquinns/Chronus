@@ -10,6 +10,12 @@ import {
 } from './domain';
 import { canAccess, visibleFactIds } from './visibility';
 
+/** Remove engine-only bookkeeping (visibility rules, detection lists) from any
+ * model-bound payload. Models never need them, and information architecture is
+ * enforced in code — WP12 prompt economy + hygiene. */
+export const stripModelHidden = <T>(value: T): T => JSON.parse(JSON.stringify(value, (key, child) =>
+  key === 'visibility' || key === 'fieldVisibility' || key === 'detectableBy' ? undefined : child));
+
 const maySee = (state: WorldState, viewerId: string, rule: VisibilityRule) =>
   canAccess(rule, viewerId, state.manifest.playerId, state.gameOver);
 
@@ -40,7 +46,7 @@ export const entityDirectory = (state: WorldState, viewerId = state.manifest.pla
 
 export const playerVisibleState = (state: WorldState, beliefs: BeliefState) => {
   const playerId = state.manifest.playerId;
-  return {
+  return stripModelHidden({
     scenario: {
       id: state.manifest.id,
       title: state.manifest.title,
@@ -86,7 +92,7 @@ export const playerVisibleState = (state: WorldState, beliefs: BeliefState) => {
     processes: Object.values(state.pendingProcesses)
       .filter((process) => !process.completed && maySee(state, playerId, process.visibility))
       .map(({ onMature: _onMature, perTurnEffects: _perTurnEffects, detectableBy: _detectableBy, ...process }) => process),
-  };
+  });
 };
 
 export const actorVisibleState = (
@@ -97,7 +103,7 @@ export const actorVisibleState = (
   memory?: ActorMemoryState,
 ) => {
   const entity = state.entities[actorId];
-  return {
+  return stripModelHidden({
     identity: entity ? visibleEntity(state, actorId, entity) : undefined,
     turn: state.turn,
     dateLabel: state.dateLabel,
@@ -113,11 +119,31 @@ export const actorVisibleState = (
       historicalPriorWeight: memory.historicalPriorWeight,
       significantEvents: memory.events.slice(-20),
     } : undefined,
-  };
+  });
 };
 
-export const authoritativeSnapshot = (state: WorldState) => ({
-  manifest: state.manifest,
+export const authoritativeSnapshot = (state: WorldState) => stripModelHidden({
+  // Slimmed manifest: advisors, narrativeWorld, and voice are narrator-side
+  // concerns and never inform causal adjudication.
+  manifest: {
+    id: state.manifest.id,
+    title: state.manifest.title,
+    premise: state.manifest.premise,
+    playerId: state.manifest.playerId,
+    playerRole: state.manifest.playerRole,
+    timeUnit: state.manifest.timeUnit,
+    timeScale: state.manifest.timeScale,
+    timeScaleRules: state.manifest.timeScaleRules,
+    metricDefinitions: state.manifest.metricDefinitions,
+    historicalCutoff: state.manifest.historicalCutoff,
+    authorityRules: state.manifest.authorityRules,
+    calibrationRules: state.manifest.calibrationRules,
+    historicalAnalogs: state.manifest.historicalAnalogs,
+    hardRules: state.manifest.hardRules,
+    executableHardRules: state.manifest.executableHardRules,
+    unresolvedUncertainties: state.manifest.unresolvedUncertainties,
+    metricRoles: state.manifest.metricRoles,
+  },
   turn: state.turn,
   dateLabel: state.dateLabel,
   currentDateTime: state.currentDateTime,

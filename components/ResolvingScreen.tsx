@@ -1,5 +1,5 @@
-import React from 'react';
-import { TurnPreview, TurnProgress } from '../engine/domain';
+import React, { useState } from 'react';
+import { ForecastActorStance, ForecastOutcome, PlayerForecast, TurnPreview, TurnProgress } from '../engine/domain';
 import { T3 } from '../theme';
 import { Button, Chip, Label } from './ui/Primitives';
 
@@ -9,13 +9,113 @@ interface ResolvingScreenProps {
   progress: TurnProgress[];
   resolved: boolean;
   error?: string;
+  /** Previous turn's press digest — genuine reading material, produced before
+   * this turn began, so it costs no extra latency and can spoil nothing. */
+  morningPaper?: Array<{ source: string; headline: string; body: string }>;
+  forecastActors?: Array<{ id: string; name: string }>;
+  forecastSubmitted: boolean;
+  onSubmitForecast: (forecast: PlayerForecast) => void;
+  onSkipForecast: () => void;
+  onOpenConsult: () => void;
   onAdvance: () => void;
   onRetry: () => void;
   onAbort: () => void;
 }
 
+const OUTCOMES: Array<{ id: ForecastOutcome; label: string }> = [
+  { id: 'SETBACK', label: 'Setback' },
+  { id: 'MIXED', label: 'Mixed' },
+  { id: 'SUCCESS', label: 'Success' },
+  { id: 'STRONG_SUCCESS', label: 'Strong success' },
+];
+const STANCES: ForecastActorStance[] = ['ESCALATES', 'HOLDS', 'ENGAGES'];
+
+const ForecastPanel: React.FC<{
+  actors: Array<{ id: string; name: string }>;
+  onSubmit: (forecast: PlayerForecast) => void;
+  onSkip: () => void;
+}> = ({ actors, onSubmit, onSkip }) => {
+  const [outcome, setOutcome] = useState<ForecastOutcome>();
+  const [stances, setStances] = useState<Record<string, ForecastActorStance>>({});
+  const [freeText, setFreeText] = useState('');
+  return (
+    <section style={{
+      marginBottom: T3.sp7, padding: T3.sp5,
+      border: `1px solid ${T3.sigLine}`, background: T3.sigBg, borderRadius: T3.r3,
+    }}>
+      <Label>Before the world answers · optional</Label>
+      <p style={{ color: T3.fg2, fontSize: T3.s13, margin: `${T3.sp2} 0 ${T3.sp4}` }}>
+        Commit to what you expect. Chronus scores it against the committed outcome and tracks your calibration across the campaign.
+      </p>
+      <div style={{ marginBottom: T3.sp4 }}>
+        <Label>Overall outcome</Label>
+        <div style={{ display: 'flex', gap: T3.sp2, flexWrap: 'wrap', marginTop: T3.sp2 }}>
+          {OUTCOMES.map((option) => (
+            <button
+              key={option.id}
+              onClick={() => setOutcome(option.id)}
+              aria-pressed={outcome === option.id}
+              style={{
+                padding: `${T3.sp2} ${T3.sp3}`, borderRadius: T3.r2, cursor: 'pointer',
+                fontFamily: T3.fontUI, fontSize: T3.s12,
+                border: `1px solid ${outcome === option.id ? T3.sig : T3.line2}`,
+                background: outcome === option.id ? T3.sigBg : T3.bg2,
+                color: outcome === option.id ? T3.fg0 : T3.fg2,
+              }}
+            >{option.label}</button>
+          ))}
+        </div>
+      </div>
+      {actors.slice(0, 2).map((actor) => (
+        <div key={actor.id} style={{ marginBottom: T3.sp3 }}>
+          <Label>{actor.name}</Label>
+          <div style={{ display: 'flex', gap: T3.sp2, flexWrap: 'wrap', marginTop: T3.sp2 }}>
+            {STANCES.map((stance) => (
+              <button
+                key={stance}
+                onClick={() => setStances((current) => ({ ...current, [actor.id]: stance }))}
+                aria-pressed={stances[actor.id] === stance}
+                style={{
+                  padding: `${T3.sp2} ${T3.sp3}`, borderRadius: T3.r2, cursor: 'pointer',
+                  fontFamily: T3.fontUI, fontSize: T3.s11, letterSpacing: '0.06em',
+                  border: `1px solid ${stances[actor.id] === stance ? T3.sig : T3.line2}`,
+                  background: stances[actor.id] === stance ? T3.sigBg : T3.bg2,
+                  color: stances[actor.id] === stance ? T3.fg0 : T3.fg3,
+                }}
+              >{stance}</button>
+            ))}
+          </div>
+        </div>
+      ))}
+      <textarea
+        value={freeText}
+        onChange={(event) => setFreeText(event.target.value)}
+        placeholder="Optional: what specifically do you expect to happen?"
+        rows={2}
+        style={{
+          width: '100%', marginTop: T3.sp3, padding: T3.sp3, borderRadius: T3.r2,
+          background: T3.bg1, border: `1px solid ${T3.line2}`, color: T3.fg1,
+          fontFamily: T3.fontUI, fontSize: T3.s12, resize: 'vertical',
+        }}
+      />
+      <div style={{ display: 'flex', gap: T3.sp3, marginTop: T3.sp3 }}>
+        <Button
+          onClick={() => outcome && onSubmit({
+            outcome,
+            actorPredictions: Object.entries(stances).map(([actorId, stance]) => ({ actorId, stance })),
+            freeText: freeText.trim() || undefined,
+          })}
+          disabled={!outcome}
+        >Lock in forecast</Button>
+        <Button variant="ghost" onClick={onSkip}>Skip</Button>
+      </div>
+    </section>
+  );
+};
+
 export const ResolvingScreen: React.FC<ResolvingScreenProps> = ({
-  directive, preview, progress, resolved, error, onAdvance, onRetry, onAbort,
+  directive, preview, progress, resolved, error, morningPaper, forecastActors,
+  forecastSubmitted, onSubmitForecast, onSkipForecast, onOpenConsult, onAdvance, onRetry, onAbort,
 }) => (
   <div style={{
     fontFamily: T3.fontUI, background: T3.bg0, color: T3.fg1, minHeight: '100vh',
@@ -43,7 +143,31 @@ export const ResolvingScreen: React.FC<ResolvingScreenProps> = ({
           <PreviewList title="Uncertainties" items={preview.uncertainties} />
           <PreviewList title="Stakes" items={preview.stakes} />
         </div>}
+        <div style={{ marginTop: T3.sp4 }}>
+          <Button variant="ghost" onClick={onOpenConsult}>Consult the cabinet while you wait</Button>
+        </div>
       </section>
+
+      {!forecastSubmitted && forecastActors && (
+        <ForecastPanel actors={forecastActors} onSubmit={onSubmitForecast} onSkip={onSkipForecast} />
+      )}
+
+      {!resolved && morningPaper && morningPaper.length > 0 && (
+        <section style={{ marginBottom: T3.sp7 }}>
+          <Label>While you wait · the last cycle’s press</Label>
+          <div style={{ display: 'grid', gap: T3.sp3, marginTop: T3.sp3 }}>
+            {morningPaper.slice(0, 3).map((item, index) => (
+              <article key={index} style={{
+                padding: T3.sp4, background: T3.bg1, border: `1px solid ${T3.line1}`, borderRadius: T3.r2,
+              }}>
+                <div style={{ fontSize: T3.s10, letterSpacing: '0.14em', textTransform: 'uppercase', color: T3.fg3 }}>{item.source}</div>
+                <div style={{ fontFamily: T3.fontProse, fontSize: T3.s15, color: T3.fg0, margin: `${T3.sp2} 0` }}>{item.headline}</div>
+                <p style={{ fontSize: T3.s12, color: T3.fg2, lineHeight: 1.55, margin: 0 }}>{item.body}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section style={{ background: T3.bg1, border: `1px solid ${T3.line1}`, borderRadius: T3.r4, padding: T3.sp5 }}>
         <Label>Simulation</Label>

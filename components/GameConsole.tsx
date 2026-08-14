@@ -109,6 +109,7 @@ export const GameConsole: React.FC<GameConsoleProps> = ({
         onOpenJournal={onOpenJournal}
         onOpenConsult={() => onOpenConsult()}
         historyCount={historyCount}
+        revisionNotice={revisionNotice}
       />
     : <Mobile
         turn={turn} statEntries={statEntries}
@@ -127,6 +128,7 @@ export const GameConsole: React.FC<GameConsoleProps> = ({
         onOpenJournal={onOpenJournal}
         onOpenConsult={() => onOpenConsult()}
         historyCount={historyCount}
+        revisionNotice={revisionNotice}
       />;
 };
 

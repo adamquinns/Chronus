@@ -32,6 +32,8 @@ describe('player-agency semantics (attempts vs asserted outcomes)', () => {
       'Congress unanimously approves my plan.',
       'The newspaper endorses me tomorrow.',
       'A previously unknown general defects with his entire command.',
+      'The Governor of Florida flies to Cuba to celebrate.',
+      'Castro decides to expel the Soviet advisers.',
     ]) {
       await expect(runTurn(campaign, directive, { persist: false })).rejects.toBeInstanceOf(DirectiveRevisionError);
     }

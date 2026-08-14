@@ -31,6 +31,7 @@ import { buildCounterfactualBranches } from './branching';
 import { resolveDetection } from './detection';
 import { buildNarrativePacket } from './narrative';
 import { groundReferences } from './worldExpansion';
+import { emptyForecastRecord } from './forecast';
 
 export interface RunTurnOptions {
   gateway?: ModelGateway;
@@ -285,6 +286,23 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     code: 'HARD_FEASIBILITY_EFFECT_REMOVED', severity: 'WARNING' as const,
     message: `${effectId} was removed before resolution because its mechanism is hard-impossible.`,
   })));
+  // Repair-by-omission BEFORE validation: a malformed cosmetic effect (e.g. a
+  // commitments change without a commitment string) is dropped with a warning
+  // rather than being allowed to fail the whole turn through the repair loop.
+  const malformed = rawAdjudication.recommendedEffects.filter((effect) =>
+    effect.targetType === 'RELATIONSHIP' && effect.field === 'commitments' && typeof effect.setValue !== 'string');
+  if (malformed.length) {
+    const malformedIds = new Set(malformed.map((effect) => effect.id));
+    rawAdjudication = {
+      ...rawAdjudication,
+      recommendedEffects: rawAdjudication.recommendedEffects.filter((effect) => !malformedIds.has(effect.id)),
+      outcomeBands: rawAdjudication.outcomeBands.map((band) => ({ ...band, effectIds: band.effectIds.filter((id) => !malformedIds.has(id)) })),
+    };
+    recoveredValidation.push(...malformed.map((effect) => ({
+      code: 'MALFORMED_EFFECT_REMOVED', severity: 'WARNING' as const,
+      message: `${effect.id} was removed: commitments effects require a commitment string.`,
+    })));
+  }
   let proposalFailures = validateAdjudicationProposal(rawAdjudication, dryStrategy, feasibility, world, actorActions)
     .filter((issue) => issue.severity === 'ERROR');
   if (proposalFailures.length && options.gateway) {
@@ -508,6 +526,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     memories: nextMemories,
     audits: [...campaign.audits, audit],
     aliases: { ...(campaign.aliases ?? {}), ...grounding.aliasUpdates },
+    forecastRecord: campaign.forecastRecord ?? emptyForecastRecord(),
     storySummary: narrative.updatedStorySummary || campaign.storySummary,
     narrativeCharacters,
     narrativeThreads: [...threadMap.values()],

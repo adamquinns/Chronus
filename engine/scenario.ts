@@ -9,6 +9,7 @@ import {
 } from './domain';
 import { snapshotHash } from './audit';
 import { canAccess, visibility } from './visibility';
+import { emptyForecastRecord } from './forecast';
 
 const visibilityIssue = (
   state: WorldState,
@@ -201,6 +202,7 @@ export const migrateCampaign = (input: Campaign): Campaign => {
     raw.memories ??= Object.fromEntries(Object.keys(raw.state.entities).map((actorId) => [actorId, { actorId, events: [], historicalPriorWeight: 1 }]));
     raw.storySummary ??= '';
     raw.aliases ??= {};
+    raw.forecastRecord ??= emptyForecastRecord();
     raw.narrativeCharacters ??= [];
     raw.narrativeThreads ??= [];
     raw.chronicle ??= raw.audits.map((audit) => ({ turn: audit.turn, date: audit.committedStateSnapshot?.dateLabel ?? `Turn ${audit.turn}`, title: audit.narrative.title, summary: audit.narrative.chronicleEntry ?? audit.narrative.immediateOutcome }));
@@ -284,6 +286,7 @@ export const migrateCampaign = (input: Campaign): Campaign => {
   raw.memories = Object.fromEntries(Object.keys(raw.state.entities).map((actorId) => [actorId, { actorId, events: [], historicalPriorWeight: 1 }]));
   raw.storySummary = '';
   raw.aliases = {};
+  raw.forecastRecord = emptyForecastRecord();
   raw.narrativeCharacters = [];
   raw.narrativeThreads = [];
   raw.chronicle = [];

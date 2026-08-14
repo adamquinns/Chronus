@@ -4,6 +4,7 @@ import { ModelGateway } from './model';
 import { assertValidScenario } from './scenario';
 import { scenarioDraftSchema, scenarioResearchSchema } from './schemas';
 import { canAccess, visibility } from './visibility';
+import { emptyForecastRecord } from './forecast';
 
 export type ScenarioDraft = z.infer<typeof scenarioDraftSchema>;
 
@@ -176,7 +177,7 @@ export const initializeScenarioDraft = (draftInput: ScenarioDraft, seed = Date.n
     currentStrategy: entity.objectives[0],
     historicalPriorWeight: 1,
   }]));
-  const campaign: Campaign = { state, beliefs, memories, audits: [], storySummary: '', narrativeCharacters: [], narrativeThreads: [], chronicle: [], aliases: {} };
+  const campaign: Campaign = { state, beliefs, memories, audits: [], storySummary: '', narrativeCharacters: [], narrativeThreads: [], chronicle: [], aliases: {}, forecastRecord: emptyForecastRecord() };
   assertValidScenario(campaign);
   return campaign;
 };

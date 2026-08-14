@@ -2,6 +2,7 @@ import { DBSchema, IDBPDatabase, openDB } from 'idb';
 import { Campaign, TurnAudit } from './domain';
 import { validateWorld } from './state';
 import { assertValidScenario, migrateCampaign } from './scenario';
+import { applyForecastScore, emptyForecastRecord } from './forecast';
 
 interface ChronusDb extends DBSchema {
   campaigns: {
@@ -128,6 +129,7 @@ export const rollbackCampaign = (campaign: Campaign, committedTurn: number): Cam
       narrativeThreads: [],
       chronicle: [],
       aliases: {},
+      forecastRecord: emptyForecastRecord(),
     };
   }
   const audit = campaign.audits.find((candidate) => candidate.turn === committedTurn);
@@ -145,6 +147,11 @@ export const rollbackCampaign = (campaign: Campaign, committedTurn: number): Cam
     // not survive the rewind.
     aliases: Object.fromEntries(Object.entries(campaign.aliases ?? {})
       .filter(([, targetId]) => Boolean(audit.committedStateSnapshot.entities[targetId]))),
+    // Rebuild calibration from the surviving audits so a rollback cannot leave
+    // credit for forecasts that no longer exist.
+    forecastRecord: campaign.audits
+      .filter((candidate) => candidate.turn <= committedTurn && candidate.forecastScore)
+      .reduce((record, candidate) => applyForecastScore(record, candidate.forecastScore!), emptyForecastRecord()),
   };
 };
 

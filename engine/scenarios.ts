@@ -4,6 +4,7 @@ import { assertValidScenario } from './scenario';
 export { createCoalitionCampaign, createMilitaryCampaign } from './curatedScenarios';
 import { createCoalitionCampaign, createMilitaryCampaign } from './curatedScenarios';
 import { createTwilightCampaign } from './twilightScenario';
+import { emptyForecastRecord } from './forecast';
 export { createTwilightCampaign } from './twilightScenario';
 
 const publicVisibility = () => visibility('PUBLIC');
@@ -310,7 +311,7 @@ export const createCubanCampaign = (seed = 19621027): Campaign => {
     currentStrategy: state.entities[actorId].objectives[0],
     historicalPriorWeight: 1,
   }]));
-  const campaign: Campaign = { state, beliefs, memories, audits: [], storySummary: '', narrativeCharacters: [], narrativeThreads: [], chronicle: [], aliases: {} };
+  const campaign: Campaign = { state, beliefs, memories, audits: [], storySummary: '', narrativeCharacters: [], narrativeThreads: [], chronicle: [], aliases: {}, forecastRecord: emptyForecastRecord() };
   assertValidScenario(campaign);
   return campaign;
 };
