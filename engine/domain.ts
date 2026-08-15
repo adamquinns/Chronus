@@ -591,6 +591,9 @@ export interface ModelDisagreement {
 
 export interface StateChange {
   id: Id;
+  /** The mechanism this change is attributable to, carried rather than
+   * inferred from the effect id so the ledger can answer "why". */
+  mechanismId?: Id;
   targetType: ProposedEffect['targetType'];
   targetId: Id;
   field: string;

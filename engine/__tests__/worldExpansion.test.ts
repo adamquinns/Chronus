@@ -389,3 +389,40 @@ describe('the engine must not mangle a clear directive', () => {
     expect(issues.some((issue) => issue.code === 'WX_PLAYER_CONTROL_REJECTED')).toBe(true);
   });
 });
+
+describe('ledger legibility and grounding hygiene', () => {
+  it('attributes committed changes to the mechanism that caused them', async () => {
+    const result = await runTurn(createCubanCampaign(19621027), 'Contact Khrushchev through the Robert Kennedy backchannel.', { persist: false });
+    const attributable = result.audit.stateChanges.filter((change) => change.field !== 'create');
+    expect(attributable.length).toBeGreaterThan(0);
+    // Every committed change knows which mechanism produced it.
+    expect(attributable.every((change) => Boolean(change.mechanismId))).toBe(true);
+    const visible = result.audit.narrativePacket!.visibleChanges as Array<{ explanation: string }>;
+    expect(visible.every((change) => !/no directive attributable/i.test(change.explanation))).toBe(true);
+  });
+
+  it('gives each materialized object its own cause rather than one repeated rationale', async () => {
+    const result = await runTurn(createCubanCampaign(94), 'Ask LBJ to brief the cabinet privately.', { persist: false });
+    const creations = result.audit.stateChanges.filter((change) => change.field === 'create');
+    expect(creations.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(creations.map((change) => change.cause)).size).toBe(creations.length);
+    expect(creations.every((change) => change.cause.length < 200)).toBe(true);
+  });
+
+  it('rescales a relationship proposed on a 0-1 scale instead of creating a dead edge', () => {
+    const state = createCubanCampaign(95).state;
+    const { proposal, issues } = validateWorldExtension({
+      rationale: 'test',
+      entities: [],
+      relationships: [{
+        id: 'kennedy_test', fromId: 'kennedy', toId: 'khrushchev',
+        alignment: 0.75, trust: 0.4, leverage: 0.9,
+        communication: true, commitments: [], visibility: visibility('PUBLIC'),
+      }],
+      facts: [], arcs: [], aliases: [], sourceRefs: [], confidence: 'MEDIUM',
+    }, state);
+    expect(proposal.relationships[0].alignment).toBe(75);
+    expect(proposal.relationships[0].leverage).toBe(90);
+    expect(issues.some((issue) => issue.code === 'WX_RELATIONSHIP_SCALE')).toBe(true);
+  });
+});

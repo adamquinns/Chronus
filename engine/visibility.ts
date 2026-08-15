@@ -84,8 +84,10 @@ export const projectChangesForViewer = (
       : change.targetType === 'ARC'
         ? state.arcs[change.targetId]?.title
         : change.targetId;
-    const sourceMechanism = graph.mechanisms.find((mechanism) =>
-      change.sourceEffectId.includes(mechanism.id));
+    const sourceMechanism = graph.mechanisms.find((mechanism) => mechanism.id === change.mechanismId)
+      ?? graph.mechanisms.find((mechanism) => change.sourceEffectId.includes(mechanism.id));
+    const actorDriven = change.mechanismId?.startsWith('actor:') || change.mechanismId?.startsWith('autonomous_');
+    const arcDriven = change.mechanismId?.startsWith('arc:');
     // A creation has no prior value and its raw object is meaningless to a
     // reader: render it as something entering the world, named.
     const isCreation = change.field === 'create';
@@ -107,7 +109,11 @@ export const projectChangesForViewer = (
         ? change.cause
         : sourceMechanism
           ? `The player attempted to: ${effectsById.get(sourceMechanism.id)}`
-          : 'An observable development with no directive attributable to it.',
+          : actorDriven || arcDriven
+            // Another party moved, or a running situation advanced. The cause
+            // already says who and why; repeating a disclaimer adds nothing.
+            ? change.cause
+            : 'An observable development with no directive attributable to it.',
       confidence: change.confidence,
     }];
   });

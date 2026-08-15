@@ -158,6 +158,7 @@ export const commitEffects = (
     if (Object.is(before, after)) return;
     changes.push({
       id: `change_${prior.turn + 1}_${changes.length + 1}`,
+      mechanismId: effect.mechanismId,
       targetType: effect.targetType,
       targetId: effect.targetId,
       field: effect.field,

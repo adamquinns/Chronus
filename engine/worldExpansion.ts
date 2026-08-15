@@ -169,6 +169,19 @@ export const validateWorldExtension = (
       issues.push({ code: 'WX_RELATIONSHIP_ENDPOINT', severity: 'ERROR', message: `${relationship.id} references an unknown endpoint.` });
       return [];
     }
+    // Relationship dimensions run 0–100. A proposal whose values all sit at or
+    // below 1 is using a 0–1 scale, which would otherwise create an edge that
+    // reads as total estrangement and floors to zero on first contact.
+    const dimensions = [relationship.alignment, relationship.trust, relationship.leverage];
+    if (dimensions.every((value) => value >= 0 && value <= 1) && dimensions.some((value) => value > 0)) {
+      issues.push({ code: 'WX_RELATIONSHIP_SCALE', severity: 'WARNING', message: `${relationship.id} was proposed on a 0-1 scale and was rescaled to 0-100.` });
+      relationship = {
+        ...relationship,
+        alignment: Math.round(relationship.alignment * 100),
+        trust: Math.round(relationship.trust * 100),
+        leverage: Math.round(relationship.leverage * 100),
+      };
+    }
     const id = state.relationships[relationship.id] ? `${relationship.id}_dyn` : relationship.id;
     return [{
       ...relationship,
@@ -239,22 +252,24 @@ export const applyWorldExtension = (
   const next = structuredClone(state);
   const changes: StateChange[] = [];
   const sourceEffectId = `world_extension_${state.turn + 1}`;
-  const record = (targetType: StateChange['targetType'], targetId: Id, after: unknown) => changes.push({
+  const record = (targetType: StateChange['targetType'], targetId: Id, after: unknown, cause: string) => changes.push({
     id: `wx_${state.turn + 1}_${changes.length + 1}`,
     targetType,
     targetId,
     field: 'create',
     before: undefined,
     after: structuredClone(after),
-    cause: `Materialized on first contact: ${proposal.rationale}`,
+    cause,
     sourceEffectId,
     impactClass: 'NONE',
     confidence: proposal.confidence,
   });
+  const named = (value: { name?: string; title?: string; statement?: string; id: Id }) =>
+    value.name ?? value.title ?? value.statement ?? value.id;
   const ALL_KINDS: StrategyMechanism['kind'][] = ['DIRECT_ORDER', 'DIPLOMACY', 'COERCION', 'ECONOMIC_PRESSURE', 'MILITARY_OPERATION', 'INTELLIGENCE', 'DECEPTION', 'LEGAL_ACTION', 'PUBLIC_COMMUNICATION', 'COALITION_BUILDING', 'RESOURCE_TRANSFER', 'OTHER'];
   for (const entity of proposal.entities) {
     next.entities[entity.id] = structuredClone(entity);
-    record('ENTITY', entity.id, entity);
+    record('ENTITY', entity.id, entity, `${named(entity)} entered the world because the directive reached for them.`);
     // Fix doc §7.4: a materialized actor gets a self-authority rule bounded by
     // its declared capabilities so it can act autonomously — over itself only.
     next.manifest.authorityRules.push({
@@ -284,15 +299,15 @@ export const applyWorldExtension = (
   }
   for (const relationship of proposal.relationships) {
     next.relationships[relationship.id] = structuredClone(relationship);
-    record('RELATIONSHIP', relationship.id, relationship);
+    record('RELATIONSHIP', relationship.id, relationship, `A standing relationship with ${named({ id: relationship.toId })} came into view alongside them.`);
   }
   for (const fact of proposal.facts) {
     next.facts[fact.id] = structuredClone(fact);
-    record('FACT', fact.id, fact);
+    record('FACT', fact.id, fact, `Established as period record: ${named(fact)}`);
   }
   for (const arc of proposal.arcs) {
     next.arcs[arc.id] = structuredClone(arc);
-    record('ARC', arc.id, arc);
+    record('ARC', arc.id, arc, `${named(arc)} began as a live situation.`);
   }
   return { state: next, changes };
 };
