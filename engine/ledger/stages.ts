@@ -57,8 +57,8 @@ const INTERPRET = `You interpret a player's directive inside a historical simula
 
 The player holds the stated role. Decide what they are ACTUALLY attempting, separating:
 - attempts: what they do within their own authority, including issuing orders and demands
-- requestedOutcomes: results that depend on another party choosing to comply
-- assertedEvents: text that declares another party's behaviour or an outcome as already settled
+- requestedOutcomes: every result the player wants that is not theirs to simply produce. Set whoMustChoose to the party whose willing agreement the result depends on. Leave whoMustChoose EMPTY when the result would be taken rather than granted — an assassination, a strike that lands, a building destroyed, a person seized. Nobody consents to those, so no one chooses them, but they are still results the player is reaching for and belong here
+- assertedEvents: text that declares another party's behaviour or an outcome as already settled. A directive that says what ANOTHER PARTY DOES, rather than what the player does, is an assertion. Record it here and do NOT convert it into an attempt on the player's behalf — inventing an attempt they did not describe is how a player comes to author other people's decisions
 
 Three rules that decide most cases:
 1. METHOD IS DELEGATED. When the player names an end and a capable body — an intelligence service, a military command, a department — the method is that body's to devise. An absent method is never a defect; record the body under delegatedTo.
@@ -104,6 +104,8 @@ const ENUMERATE = `You enumerate what could plausibly happen next in a historica
 
 You are given an INTERPRETATION of what the player is attempting — never their own words. Reason from the situation, the period, and what the people involved would actually do.
 
+Reason from THIS world's state, not from what happened in the real crisis. You know how the history went; that knowledge tells you how these people think and what they were capable of, and nothing more. Where the player has already diverged from the record, the historical outcome is not a default to drift back toward — it is simply one thing that is no longer happening.
+
 Produce 3–6 outcomes that DIFFER IN KIND, not in degree. Never valence labels like "setback" or "mixed result". Each is a specific event with named people and observable particulars: who does what, to whom, with what visible result.
 
 The kinds worth reaching for, where the situation supports them:
@@ -114,6 +116,16 @@ The kinds worth reaching for, where the situation supports them:
 - it succeeds cleanly, at a price you name now
 
 Where a prerequisite is MISSING, you MUST include both an outcome for proceeding anyway at degraded odds, and one for expanding the operation to cover it — the latter carrying the cost of having exceeded the stated mandate.
+
+THE APPARATUS ATTEMPTS. When the player orders something they have the standing to order, the machine of government tries to carry it out. The interesting question is never whether it begins — it is how the attempt goes, what it costs, who improvises, and what breaks. Outcomes should differ in HOW FAR the attempt gets and WHAT IT SETS OFF, not in whether anyone bothered. The most likely outcome is the attempt proceeding imperfectly, not the attempt being declined.
+
+Refusal is a tail, not the default. To make refusal an outcome at all, a NAMED person must have the standing to refuse, a motive to spend themselves doing it, and the power to make the refusal stick INSIDE THIS TURN'S CLOCK. Vague institutional reluctance is not a refusal; it is friction, and friction slows an attempt rather than cancelling it.
+
+OBSTACLES MUST FIT THE CLOCK. You are told the turn length. An obstacle whose machinery runs slower than that window cannot be the reason nothing happened — appropriations, confirmations, certifications, procurement, litigation, and formal review all run on days to months. In a four-hour window nobody is stopped by an unsigned voucher: money is obligated and reconciled later, and orders move ahead of paperwork. Such an obstacle belongs in opensThreads as a reckoning that arrives later, never as this turn's blocker.
+
+IMPROVISATION HAS A TAIL. When the attempt proceeds by cutting corners — unvouchered funds, requisitioned hulls, deniable intermediaries, verbal authority — say so plainly, and open a thread naming who is exposed and what arrives to collect. That later reckoning is where the cost of acting should land.
+
+THE CRISIS MAY NOT RESCUE THE PLAYER. No outcome may resolve the player's directive by having the underlying situation end on its own. Events elsewhere continue, but they do not reach in to make the player's decision moot.
 
 Scale the outcomes to the act. An order that would change the world must not resolve into small adjustments. If the directive risks the player's person, their authority, or sets something irreversible running, at least one outcome must carry consequences of that size — including, where it genuinely follows, an outcome that ends the campaign (set concludes).
 
@@ -156,8 +168,8 @@ You alone see the player's raw words alongside the interpretation and the outcom
 Flag:
 - RHETORIC_INFLATION: outcomes made likelier or larger because the player wrote forcefully, insisted, or used capitals
 - INTERPRETATION_CHARITY: the interpretation supplied competence, a mechanism, or coordination the player never did
-- MISSING_OUTCOME: a plausible answer the situation obviously permits that no outcome covers — especially institutional refusal, or exposure of something meant to stay quiet
-- IMPLAUSIBLE: an outcome the period, the people, or the ledger will not support
+- MISSING_OUTCOME: a plausible answer the situation obviously permits that no outcome covers. Look in BOTH directions and weight them equally: an institution refusing, or something leaking — and just as much, the attempt simply working, or working and going far beyond what the player intended. An enumeration with no branch where the player gets what they ordered is as defective as one with no branch where they are refused
+- IMPLAUSIBLE: an outcome the period, the people, or the ledger will not support — including any obstacle that runs slower than the turn's own clock being used as the reason nothing happened, and any outcome that resolves the player's directive by having the wider crisis end on its own
 
 Do not rewrite anything. Do not judge whether the plan is wise.`;
 
@@ -186,6 +198,10 @@ export const critique = async (
 const LINE_UP = `Given what just happened, say what comes next.
 
 partyMoves: for each party materially involved, the concrete move they now make on their own account — not a reaction to the player unless they are reacting. Mark visibleToPlayer false when the player would not see it.
+
+WHO ANSWERS TO THE PLAYER MATTERS. Parties marked commandedByPlayer work for the player. They are not independent agents pursuing the crisis on their own judgment, and they must never advance the player's objective unbidden — an aide who quietly wins the thing the player is trying to win is the world playing the game for them. What such a person MAY do: refuse, stall, demand it in writing, object on the record, resign, leak, protect themselves, warn, obey the letter and not the intent, or exceed their brief in a way that COSTS the player something. If one of them does act on the objective without an order, it is insubordination and it carries a price — never free progress.
+
+Everyone else acts entirely on their own account, and should. Adversaries and third parties are where the world's own momentum comes from.
 threadUpdates: for each open thread, how it moved. A thread the player ignored still moves; say how. Mark RESOLVED only when it is genuinely settled, OVERTAKEN when events have made it moot.
 facingPlayer: the decisions now in front of the player, in their own terms.
 
@@ -297,7 +313,7 @@ export const narrate = async (
         playerOrdered: rawDirective,
         attempted: interpretation.attempts,
         blocked: interpretation.prerequisites.filter((item) => item.status === 'MISSING').map((item) => item.statement),
-        stillUnresolved: interpretation.requestedOutcomes,
+        stillUnresolved: interpretation.requestedOutcomes.map((item) => item.outcome),
         setAside: interpretation.assertedEvents,
         whatHappened: outcome.event,
         established: outcome.establishes.filter((item) => item.audience.kind !== 'NOBODY' && item.audience.kind !== 'PARTIES').map((item) => item.statement),

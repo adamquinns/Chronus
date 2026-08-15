@@ -122,7 +122,7 @@ describe('validation guards what has been agreed', () => {
 
   it('refuses compliance the deciding party never gave', () => {
     const issues = checkNoManufacturedCompliance(
-      { attempts: [], requestedOutcomes: ['Khrushchev withdraws the missiles'], assertedEvents: [], prerequisites: [], parties: [], stakes: [], delegatedTo: [], summary: '' },
+      { attempts: [], requestedOutcomes: [{ outcome: 'Khrushchev withdraws the missiles', whoMustChoose: 'Khrushchev' }], assertedEvents: [], prerequisites: [], parties: [], stakes: [], delegatedTo: [], summary: '' },
       outcome({
         event: 'The president sends the message and waits.',
         establishes: [{ statement: 'Khrushchev withdraws the missiles from Cuba.', audience: { kind: 'PUBLIC' } }],
@@ -133,7 +133,7 @@ describe('validation guards what has been agreed', () => {
 
   it('permits compliance when the outcome says the party decided it', () => {
     const issues = checkNoManufacturedCompliance(
-      { attempts: [], requestedOutcomes: ['Khrushchev withdraws the missiles'], assertedEvents: [], prerequisites: [], parties: [], stakes: [], delegatedTo: [], summary: '' },
+      { attempts: [], requestedOutcomes: [{ outcome: 'Khrushchev withdraws the missiles', whoMustChoose: 'Khrushchev' }], assertedEvents: [], prerequisites: [], parties: [], stakes: [], delegatedTo: [], summary: '' },
       outcome({
         event: 'Khrushchev accepts the terms and orders the missiles withdrawn.',
         establishes: [{ statement: 'Khrushchev withdraws the missiles from Cuba.', audience: { kind: 'PUBLIC' } }],

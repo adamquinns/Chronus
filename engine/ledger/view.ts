@@ -158,6 +158,18 @@ export const buildTurnData = (
       })),
       assets: [],
     },
+    facingPlayer: latest?.lineUp.facingPlayer ?? [],
+    whatElseCouldHaveHappened: latest && latest.outcomes.length > 1
+      ? {
+        draw: latest.draw,
+        outcomes: latest.outcomes.map((outcome) => ({
+          id: outcome.id,
+          event: outcome.event,
+          probability: outcome.probability,
+          taken: outcome.id === latest.selectedOutcomeId,
+        })),
+      }
+      : undefined,
     choices: suggestions.map((item) => asChoice(item.id, item.directive, item.rationale)),
     gameOver: Boolean(ledger.concluded),
   };

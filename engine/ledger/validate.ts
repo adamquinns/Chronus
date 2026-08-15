@@ -48,7 +48,11 @@ export const checkNoManufacturedCompliance = (
   const issues: ValidationIssue[] = [];
   const eventText = norm(outcome.event);
   for (const requested of interpretation.requestedOutcomes) {
-    const requestedText = norm(requested);
+    // Nobody consents to being assassinated or bombed. When no party has a
+    // choice to make, the result is simply taken, and recording it as achieved
+    // is not wish-fulfilment — it is the attempt having worked.
+    if (!requested.whoMustChoose.trim()) continue;
+    const requestedText = norm(requested.outcome);
     const key = requestedText.split(' ').filter((word) => word.length > 4).slice(0, 2);
     if (!key.length) continue;
     const establishedIt = outcome.establishes.some((item) => {
@@ -63,12 +67,18 @@ export const checkNoManufacturedCompliance = (
       const text = norm(item.statement);
       return key.every((word) => text.includes(word)) && DECIDES.test(text);
     });
-    const decided = decidedInStatement || DECIDES.test(eventText);
+    const chooser = norm(requested.whoMustChoose).split(' ').filter((word) => word.length > 3);
+    const chooserActs = chooser.length > 0 && outcome.establishes.concat([{ statement: outcome.event } as never])
+      .some((item) => {
+        const text = norm((item as { statement: string }).statement);
+        return chooser.some((word) => text.includes(word)) && DECIDES.test(text);
+      });
+    const decided = decidedInStatement || chooserActs || DECIDES.test(eventText);
     if (!decided) {
       issues.push({
         code: 'MANUFACTURED_COMPLIANCE',
         severity: 'ERROR',
-        message: `"${requested}" is recorded as achieved but the outcome does not say the deciding party decided it.`,
+        message: `"${requested.outcome}" is recorded as achieved but nothing says ${requested.whoMustChoose} chose it.`,
       });
     }
   }

@@ -55,11 +55,15 @@ const run = async () => {
     maxUsd: 12, maxRequests: 120, maxInputTokens: 900_000, maxOutputTokens: 250_000,
   });
 
-  for (const { name, seed, directive } of DIRECTIVES) {
+  // The directives are independent, so record them concurrently. Serially this
+  // is ~100 round-trips nose to tail and takes half an hour; a prompt edit
+  // invalidates the whole tape, which made every iteration cost that long.
+  const CONCURRENCY = 5;
+  const queue = [...DIRECTIVES];
+  const runOne = async ({ name, seed, directive }: (typeof DIRECTIVES)[number]) => {
     const gateway = new LedgerGateway({ mode: 'record', cassette, gateway: openRouter });
-    const ledger = createLedger(CUBA, seed);
     try {
-      const result = await runTurn(CUBA, ledger, directive, { gateway });
+      const result = await runTurn(CUBA, createLedger(CUBA, seed), directive, { gateway });
       console.log(`✓ ${name}: "${result.record.narration.title}" — ${result.record.outcomes.length} outcomes, drew ${result.record.selectedOutcomeId}`);
     } catch (error) {
       if (error instanceof DirectiveRevisionNeeded) {
@@ -68,8 +72,12 @@ const run = async () => {
         console.log(`✗ ${name}: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
+    // Written after each directive so a crash never loses the whole tape.
     await writeFile(CASSETTE_PATH, JSON.stringify(cassette, null, 2));
-  }
+  };
+  await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
+    for (let next = queue.shift(); next; next = queue.shift()) await runOne(next);
+  }));
 
   const usage = openRouter.budget.snapshot();
   console.log(`\n${Object.keys(cassette.entries).length} entries recorded. Requests: ${usage.requests}. Cost: $${usage.costUsd.toFixed(4)}.`);

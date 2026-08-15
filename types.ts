@@ -150,6 +150,13 @@ export interface TurnData {
   advisorReactions?: Array<{ actorId: string; name: string; reaction: string }>;
   developments?: CausalDevelopment[];
   storyThreads?: Array<{ id: string; title: string; status: string; summary: string }>;
+  /** What the world now puts in front of the player, in their own terms. */
+  facingPlayer?: string[];
+  /** Every branch the world weighed this turn, and which one the draw took. */
+  whatElseCouldHaveHappened?: {
+    draw: number;
+    outcomes: Array<{ id: string; event: string; probability: number; taken: boolean }>;
+  };
   ledger: WorldLedger;
   choices: Choice[];
   executionAnalysis?: ExecutionAnalysis;

@@ -16,7 +16,11 @@ const provenance = z.enum([
 export const interpretationSchema = z.object({
   summary: z.string().max(600),
   attempts: z.array(z.string().max(400)).max(8),
-  requestedOutcomes: z.array(z.string().max(300)).max(8).default([]),
+  requestedOutcomes: z.array(z.object({
+    outcome: z.string().max(300),
+    /** Empty when the result needs nobody's consent — it is taken, not granted. */
+    whoMustChoose: z.string().max(120).default(''),
+  })).max(8).default([]),
   assertedEvents: z.array(z.string().max(300)).max(8).default([]),
   prerequisites: z.array(z.object({
     statement: z.string().max(300),

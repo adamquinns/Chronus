@@ -53,11 +53,11 @@ export const CUBA: ScenarioDefinition = {
   cast: [
     { id: 'khrushchev', name: 'Nikita Khrushchev', standing: 'Premier of the Soviet Union, looking for an exit that does not read as capitulation to his own hardliners.', towardPlayer: 'Adversary, but one who wants the same thing the president wants and cannot say so plainly.' },
     { id: 'castro', name: 'Fidel Castro', standing: 'Cuban premier, certain an invasion is coming, mobilising the population and pressing Moscow not to yield.', towardPlayer: 'Implacably hostile; no channel exists between them.' },
-    { id: 'rfk', name: 'Robert F. Kennedy', standing: 'Attorney General, the president’s brother, running the Dobrynin channel.', towardPlayer: 'The most trusted person in the room.' },
-    { id: 'lemay', name: 'General Curtis LeMay', standing: 'Air Force Chief of Staff, contemptuous of restraint, convinced delay is surrender by instalment.', towardPlayer: 'Loyal to the office and openly scornful of the man in it.' },
-    { id: 'mcnamara', name: 'Robert McNamara', standing: 'Secretary of Defense, focused on keeping events from escaping political control.', towardPlayer: 'Trusted, analytical, willing to say what the president does not want to hear.' },
-    { id: 'joint_chiefs', name: 'The Joint Chiefs of Staff', standing: 'Unanimous that the SAM site should be struck; OPLAN 312 is loaded and waiting.', towardPlayer: 'Will execute lawful orders, and will put their objections on the record first.' },
-    { id: 'excomm', name: 'The Executive Committee', standing: 'The president’s crisis cabinet, split between those who want a strike and those who want a deal.', towardPlayer: 'Advisory; their consent is not required but their resignation would be an event.' },
+    { id: 'rfk', name: 'Robert F. Kennedy', standing: 'Attorney General, the president’s brother, running the Dobrynin channel.', towardPlayer: 'The most trusted person in the room.', commandedByPlayer: true },
+    { id: 'lemay', name: 'General Curtis LeMay', standing: 'Air Force Chief of Staff, contemptuous of restraint, convinced delay is surrender by instalment.', towardPlayer: 'Loyal to the office and openly scornful of the man in it.', commandedByPlayer: true },
+    { id: 'mcnamara', name: 'Robert McNamara', standing: 'Secretary of Defense, focused on keeping events from escaping political control.', towardPlayer: 'Trusted, analytical, willing to say what the president does not want to hear.', commandedByPlayer: true },
+    { id: 'joint_chiefs', name: 'The Joint Chiefs of Staff', standing: 'Unanimous that the SAM site should be struck; OPLAN 312 is loaded and waiting.', towardPlayer: 'Will execute lawful orders, and will put their objections on the record first.', commandedByPlayer: true },
+    { id: 'excomm', name: 'The Executive Committee', standing: 'The president’s crisis cabinet, split between those who want a strike and those who want a deal.', towardPlayer: 'Advisory; their consent is not required but their resignation would be an event.', commandedByPlayer: true },
   ],
   advisors: [
     { id: 'mcnamara', name: 'Robert McNamara', voice: 'Analytical, clipped, reframes danger as sequences and probabilities. Asks for the number of minutes before he answers.', bias: 'Systematically underweights how fast politics moves compared to how fast machinery does.' },

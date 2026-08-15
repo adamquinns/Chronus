@@ -85,6 +85,13 @@ export interface CastMember {
   standing: string;
   /** Their relationship to the player, in words rather than numbers. */
   towardPlayer: string;
+  /**
+   * True when this person answers to the player. Such a person may refuse,
+   * resign, leak, drag, or exceed their brief — but may not pursue the
+   * player's objective unbidden, which would be the world playing the game
+   * on the player's behalf.
+   */
+  commandedByPlayer?: boolean;
   firstSeenTurn: number;
 }
 
@@ -144,7 +151,7 @@ export interface Interpretation {
   /** What the player does within their own authority. */
   attempts: string[];
   /** Results that depend on someone else deciding. */
-  requestedOutcomes: string[];
+  requestedOutcomes: Array<{ outcome: string; whoMustChoose: string }>;
   /** Text declaring another party's behaviour as already settled. */
   assertedEvents: string[];
   prerequisites: Prerequisite[];
@@ -274,7 +281,7 @@ export interface ScenarioDefinition {
   openThreads: Array<{ title: string; question: string; partyIds: Id[]; resolvedBy: string; ifIgnored: string }>;
   /** True, but not known to the player. This is the fog. */
   hidden: Array<{ statement: string; audience: Audience; provenance: Provenance }>;
-  cast: Array<{ id: Id; name: string; standing: string; towardPlayer: string }>;
+  cast: Array<{ id: Id; name: string; standing: string; towardPlayer: string; commandedByPlayer?: boolean }>;
   advisors: Array<{ id: Id; name: string; voice: string; bias: string }>;
   voice: { era: string; tone: string; textureNotes: string[]; forbiddenCliches: string[] };
   /** Live lookup for contemporary settings. Historical scenarios leave it off. */

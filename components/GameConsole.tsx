@@ -321,7 +321,9 @@ const Laptop: React.FC<ViewProps> = ({
         </article>
 
         <NarrativeDepth turn={turn} />
+        <CounterfactualBranches turn={turn} />
         <CausalChanges turn={turn} />
+        <FacingPlayer turn={turn} />
 
         {turn.news.length > 0 && (
           <div style={{
@@ -582,7 +584,9 @@ const Mobile: React.FC<MobileProps> = ({
           ))}
         </article>
         <NarrativeDepth turn={turn} />
+        <CounterfactualBranches turn={turn} />
         <CausalChanges turn={turn} />
+        <FacingPlayer turn={turn} />
       </section>
 
       {turn.news.length > 0 && (
@@ -766,6 +770,58 @@ const Mobile: React.FC<MobileProps> = ({
     )}
   </div>
 );
+
+/**
+ * What the world now puts in front of the player. The line-up stage has always
+ * produced this; until now nothing rendered it, and the player had to infer
+ * what was actually blocking them.
+ */
+const FacingPlayer: React.FC<{ turn: TurnData }> = ({ turn }) => {
+  if (!turn.facingPlayer?.length) return null;
+  return <section style={{ borderLeft: `3px solid ${T3.sig}`, paddingLeft: T3.sp4 }}>
+    <Label tone="sig">What is in front of you now</Label>
+    <ul style={{ margin: `${T3.sp2} 0 0`, paddingLeft: T3.sp4, display: 'flex', flexDirection: 'column', gap: T3.sp2 }}>
+      {turn.facingPlayer.map((item) => (
+        <li key={item} style={{ fontSize: T3.s13, color: T3.fg1, lineHeight: 1.5, fontFamily: T3.fontProse }}>{item}</li>
+      ))}
+    </ul>
+  </section>;
+};
+
+/**
+ * The branches the world weighed, and the one the draw took. Without this the
+ * quiet outcome is indistinguishable from a world that refuses to let you act.
+ */
+const CounterfactualBranches: React.FC<{ turn: TurnData }> = ({ turn }) => {
+  const data = turn.whatElseCouldHaveHappened;
+  if (!data) return null;
+  const sorted = [...data.outcomes].sort((left, right) => right.probability - left.probability);
+  return <details style={{ border: `1px solid ${T3.line1}`, borderRadius: T3.r3, padding: T3.sp4, background: T3.bg1 }}>
+    <summary style={{ color: T3.fg1, cursor: 'pointer', fontSize: T3.s12, fontWeight: 600 }}>
+      What else could have happened · {sorted.length} branches, drew {Math.round((sorted.find((item) => item.taken)?.probability ?? 0) * 100)}%
+    </summary>
+    <div style={{ marginTop: T3.sp3, display: 'flex', flexDirection: 'column', gap: T3.sp3 }}>
+      {sorted.map((outcome) => (
+        <div key={outcome.id} style={{
+          display: 'flex', gap: T3.sp3, alignItems: 'baseline',
+          opacity: outcome.taken ? 1 : 0.62,
+        }}>
+          <span style={{
+            fontFamily: T3.fontMono, fontSize: T3.s11, minWidth: 38, textAlign: 'right',
+            color: outcome.taken ? T3.sig : T3.fg3, fontVariantNumeric: 'tabular-nums',
+          }}>{Math.round(outcome.probability * 100)}%</span>
+          <span style={{ fontSize: T3.s12, lineHeight: 1.5, color: outcome.taken ? T3.fg0 : T3.fg2 }}>
+            {outcome.taken && <strong style={{ color: T3.sig }}>drawn · </strong>}
+            {outcome.event}
+          </span>
+        </div>
+      ))}
+    </div>
+    <p style={{ marginTop: T3.sp3, fontSize: T3.s10, color: T3.fg3, fontFamily: T3.fontMono }}>
+      Roll {data.draw.toFixed(3)} against the weights above. The world enumerated these before it knew which one it would take.
+    </p>
+  </details>;
+};
 
 const NarrativeDepth: React.FC<{ turn: TurnData }> = ({ turn }) => {
   if (!turn.detailedReport && !turn.pressCoverage?.length && !turn.advisorReactions?.length) return null;
