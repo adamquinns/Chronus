@@ -439,14 +439,24 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
       }];
     });
   // Unresolved confrontations become durable situations rather than one-turn
-  // number nudges.
-  const branches = deriveBranchEffects(dryStrategy, feasibility, actorActions, world);
+  // number nudges, and live ones generate their own pressure. Derived after
+  // the outcome draw so branch incidents consume the same seeded stream.
+  const branches = deriveBranchEffects(dryStrategy, feasibility, actorActions, world, campaign.state.rngSeed, draw?.cursor ?? detection.cursor);
   recoveredValidation.push(...branches.opened.map((branchId) => ({
     code: 'BRANCH_OPENED', severity: 'WARNING' as const,
     message: `${branchId} opened: an executable attempt left its outcome for another party to decide.`,
   })), ...branches.escalated.map((branchId) => ({
     code: 'BRANCH_ESCALATED', severity: 'WARNING' as const,
     message: `${branchId} escalated: the player pressed an unresolved demand again.`,
+  })), ...branches.deescalated.map((branchId) => ({
+    code: 'BRANCH_DEESCALATED', severity: 'WARNING' as const,
+    message: `${branchId} cooled: the player engaged the other party instead of pressing them.`,
+  })), ...branches.settled.map((branchId) => ({
+    code: 'BRANCH_SETTLED', severity: 'WARNING' as const,
+    message: `${branchId} settled.`,
+  })), ...branches.incidents.map((incident) => ({
+    code: `BRANCH_INCIDENT_${incident.kind}`, severity: 'WARNING' as const,
+    message: `${incident.branchId}: ${incident.summary}`,
   })));
   const maturedEffects = evolvePendingProcesses(world);
   const worldEffects = autonomousWorldEffects(world);
@@ -460,7 +470,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
 
   progress(options, 'COMMIT', 'Committing authoritative state', 'Applying validated effects with causal provenance.');
   const committed = commitEffects(campaign.state, [...selectedEffects, ...scheduledEffects, ...branches.effects, ...maturedEffects, ...worldEffects], grounding.proposal);
-  committed.state.rngCursor = draw?.cursor ?? detection.cursor;
+  committed.state.rngCursor = branches.cursor;
   committed.state = advanceScenarioTime(committed.state);
   progress(options, 'COMMIT', 'History committed', 'Only engine-validated effects changed authoritative state.', 'COMPLETED');
 

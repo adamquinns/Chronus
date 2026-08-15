@@ -30,9 +30,13 @@ const clauses = (directive: string) => deRhetoricize(directive)
 export const inferMechanismKind = (text: string): StrategyMechanism['kind'] => {
   if (/transfer|allocate|fund|budget|move \$|send .* supplies/i.test(text)) return 'RESOURCE_TRANSFER';
   if (/^\s*(?:order|direct|authorize|instruct|command)\b/i.test(text)) return 'DIRECT_ORDER';
-  if (/negotiate|offer|backchannel|diplom|contact|call|letter|signal .*proposal/i.test(text)) return 'DIPLOMACY';
-  if (/strike|bomb|invade|deploy|attack|blockade|move .*fleet|send .*troops/i.test(text)) return 'MILITARY_OPERATION';
-  if (/secret|quiet|conceal|mislead|deceiv|feint/i.test(text)) return 'DECEPTION';
+  if (/negotiate|offer|backchannel|diplom|contact|call|letter|signal .*proposal|\bmeet\b|meeting|\btalk\b|discuss|consult|hear (?:him|her|them|his|their) (?:out|terms)|listen to/i.test(text)) return 'DIPLOMACY';
+  if (/strike|bomb|invade|deploy|attack|blockade|send .*troops|(?:move|advance|withdraw|reposition|march)\s+(?:the\s+)?[^.;]*\b(?:fleet|division|regiment|brigade|corps|battalion|squadron|troops|forces|army|carrier|units?)\b/i.test(text)) return 'MILITARY_OPERATION';
+  // "quietly", "secretly", "privately" describe HOW an act is done, not what it
+  // is: a quiet demand is a concealed demand, not a deception operation. Only
+  // genuine misdirection classifies as DECEPTION; the concealed flag carries
+  // manner separately.
+  if (/conceal|mislead|deceiv|feint|disinformation|cover story|false flag|decoy|misdirect/i.test(text)) return 'DECEPTION';
   if (/intelligence|recon|surveil|investigat|spy|verify/i.test(text)) return 'INTELLIGENCE';
   if (/court|legal|injunction|lawsuit|treaty/i.test(text)) return 'LEGAL_ACTION';
   if (/speech|announce|public|broadcast|\bpress\b/i.test(text)) return 'PUBLIC_COMMUNICATION';
@@ -259,7 +263,10 @@ export const classifyTurn = (graph: StrategyGraph, state: WorldState): { depth: 
   });
   const pivotalLanguage = graph.mechanisms.some((item) =>
     /nuclear|constitutional crisis|coup|regime change|overthrow|general war|assassinat|launch|annihilat/i.test(item.specifiedDetail));
-  const concealedForce = kinds.has('MILITARY_OPERATION') && kinds.has('DECEPTION');
+  // Concealment is a property of a mechanism, not a separate kind: a covert
+  // troop movement is MILITARY_OPERATION with concealed set.
+  const concealedForce = graph.mechanisms.some((item) =>
+    item.kind === 'MILITARY_OPERATION' && (item.concealed || kinds.has('DECEPTION')));
   const highStakes = dangerousMetric || state.goal.deadlineTurn - state.turn <= 2 || pivotalLanguage;
   const novel = graph.mechanisms.some((item) => item.kind === 'OTHER' || item.assumptions.length > 2);
   const narrowDeterministic = graph.mechanisms.length === 1

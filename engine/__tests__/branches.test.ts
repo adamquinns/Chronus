@@ -77,6 +77,54 @@ describe('durable branches: unresolved confrontations become situations', () => 
     expect(committed.state.relationships.kennedy_johnson.trust).toBeLessThan(trustBefore);
   });
 
+  it('cools when the player engages the other party instead of pressing them', async () => {
+    const first = await runTurn(createCubanCampaign(777), DEMAND, { persist: false });
+    const opened = first.campaign.state.arcs.branch_lyndon_johnson.progress;
+    const engaged = await runTurn(first.campaign, 'Meet Vice President Johnson privately and hear his terms.', { persist: false });
+    expect(engaged.campaign.state.arcs.branch_lyndon_johnson.progress).toBeLessThan(opened);
+    expect(engaged.audit.validation.some((issue) => issue.code === 'BRANCH_DEESCALATED')).toBe(true);
+  });
+
+  it('settles when sustained engagement cools it all the way, repairing standing', async () => {
+    let current = (await runTurn(createCubanCampaign(777), DEMAND, { persist: false })).campaign;
+    let settled = false;
+    for (let turn = 0; turn < 4 && !settled; turn += 1) {
+      const next = await runTurn(current, 'Meet Vice President Johnson privately and hear his terms.', { persist: false });
+      current = next.campaign;
+      settled = next.audit.validation.some((issue) => issue.code === 'BRANCH_SETTLED');
+    }
+    expect(settled).toBe(true);
+    expect(current.state.arcs.branch_lyndon_johnson.status).toBe('RESOLVED');
+  });
+
+  it('throws off its own events while the player looks elsewhere', async () => {
+    let current = (await runTurn(createCubanCampaign(4242), DEMAND, { persist: false })).campaign;
+    const kinds = new Set<string>();
+    for (let turn = 0; turn < 8; turn += 1) {
+      const next = await runTurn(current, 'Allocate 1 reconnaissance sortie.', { persist: false });
+      current = next.campaign;
+      next.audit.validation
+        .filter((issue) => issue.code.startsWith('BRANCH_INCIDENT_'))
+        .forEach((issue) => kinds.add(issue.code));
+    }
+    // A live confrontation cannot sit inert for eight turns.
+    expect(kinds.size).toBeGreaterThanOrEqual(1);
+  });
+
+  it('is reproducible: the same seed produces the same branch life', async () => {
+    const play = async () => {
+      let current = (await runTurn(createCubanCampaign(5150), DEMAND, { persist: false })).campaign;
+      const log: string[] = [];
+      for (let turn = 0; turn < 5; turn += 1) {
+        const next = await runTurn(current, 'Allocate 1 reconnaissance sortie.', { persist: false });
+        current = next.campaign;
+        log.push(...next.audit.validation.filter((issue) => issue.code.startsWith('BRANCH')).map((issue) => issue.message));
+      }
+      return log;
+    };
+    expect(await play()).toEqual(await play());
+  });
+
   it('does not open a branch when the player actually has the power to act', () => {
     const campaign = createCubanCampaign(19621027);
     const graph = compileDeterministically('Allocate 1 reconnaissance sortie.', campaign.state);
@@ -84,6 +132,24 @@ describe('durable branches: unresolved confrontations become situations', () => 
     const branches = deriveBranchEffects(graph, feasibility, [], campaign.state);
     expect(branches.opened).toEqual([]);
     expect(branches.effects).toEqual([]);
+  });
+
+  it('keeps a private confrontation private without hiding it from the counterparty', async () => {
+    const result = await runTurn(createCubanCampaign(4242), 'I quietly demand that LBJ resigns immediately.', { persist: false });
+    const branch = result.campaign.state.arcs.branch_lyndon_johnson;
+    expect(branch).toBeDefined();
+    expect(branch.visibility.classification).not.toBe('PUBLIC');
+    // You cannot secretly demand something OF someone: the target knows.
+    expect(result.audit.actorActions.some((action) => action.actorId === 'lyndon_johnson')).toBe(true);
+  });
+
+  it('draws third parties in over time', async () => {
+    let current = (await runTurn(createCubanCampaign(4242), 'I quietly demand that LBJ resigns immediately.', { persist: false })).campaign;
+    const initial = current.state.arcs.branch_lyndon_johnson.participantIds.length;
+    for (let turn = 0; turn < 7; turn += 1) {
+      current = (await runTurn(current, 'Allocate 1 reconnaissance sortie.', { persist: false })).campaign;
+    }
+    expect(current.state.arcs.branch_lyndon_johnson.participantIds.length).toBeGreaterThan(initial);
   });
 
   it('scopes branch identity to the parties involved', () => {

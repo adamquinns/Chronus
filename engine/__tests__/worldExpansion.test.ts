@@ -200,6 +200,19 @@ describe('an attempt that moves people always has consequences', () => {
     expect(result.audit.narrativePacket!.outcomeLedger.observedResponses.join(' ')).toMatch(/johnson/i);
   });
 
+  it('treats concealment as manner, not mechanism', () => {
+    const state = createCubanCampaign(93).state;
+    const quiet = compileDeterministically('I quietly demand that Khrushchev stand down.', state);
+    expect(quiet.mechanisms[0].kind).toBe('COERCION');
+    expect(quiet.mechanisms[0].concealed).toBe(true);
+    const covert = compileDeterministically('Secretly move the fleet to a new station.', state);
+    expect(covert.mechanisms[0].kind).toBe('MILITARY_OPERATION');
+    expect(covert.mechanisms[0].concealed).toBe(true);
+    // Genuine misdirection is still deception.
+    const ruse = compileDeterministically('Plant a cover story to mislead Soviet analysts.', state);
+    expect(ruse.mechanisms[0].kind).toBe('DECEPTION');
+  });
+
   it('does not match institutions by a trailing place or generic noun', () => {
     const state = createCubanCampaign(92).state;
     const cuba = compileDeterministically('Send the delegation to Cuba for talks.', state);

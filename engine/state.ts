@@ -227,6 +227,27 @@ export const commitEffects = (
         record(effect, undefined, created);
         continue;
       }
+      if (arc && effect.field === 'status' && typeof (effect as ProposedEffect).setValue === 'string') {
+        const before = arc.status;
+        arc.status = (effect as ProposedEffect).setValue as ArcState['status'];
+        record(effect, before, arc.status);
+        if (arc.status === 'RESOLVED') queue.push(...(effect as ProposedEffect & { onSettle?: ProposedEffect[] }).onSettle ?? []);
+        continue;
+      }
+      if (arc && effect.field === 'participants' && typeof (effect as ProposedEffect).setValue === 'string') {
+        const joining = (effect as ProposedEffect).setValue as string;
+        if (arc.participantIds.includes(joining)) continue;
+        const before = [...arc.participantIds];
+        arc.participantIds.push(joining);
+        record(effect, before, [...arc.participantIds]);
+        continue;
+      }
+      if (arc && effect.field === 'visibility' && (effect as ProposedEffect).setValue) {
+        const before = structuredClone(arc.visibility);
+        arc.visibility = structuredClone((effect as ProposedEffect).setValue) as typeof arc.visibility;
+        record(effect, before, structuredClone(arc.visibility));
+        continue;
+      }
       if (!arc || effect.field !== 'progress') continue;
       const before = arc.progress;
       const result = applyNumeric(before, effect, state, effect.targetId, 0, arc.threshold);

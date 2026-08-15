@@ -13,7 +13,7 @@ import { OutcomeBand, StrategyGraph } from '../domain';
 
 const concealedGraph: StrategyGraph = {
   objective: 'Build a private coalition',
-  mechanisms: [{ id: 'secret', kind: 'COALITION_BUILDING', objective: 'Recruit quietly', targetIds: ['khrushchev'], actorIds: ['kennedy'], dependencies: [], assumptions: [], sequence: 0, durationTurns: 1, resourceClaims: [], specifiedDetail: 'private recruitment', concealed: true }],
+  mechanisms: [{ id: 'secret', kind: 'COALITION_BUILDING', objective: 'Recruit quietly', targetIds: ['nato'], actorIds: ['kennedy'], dependencies: [], assumptions: [], sequence: 0, durationTurns: 1, resourceClaims: [], specifiedDetail: 'private recruitment', concealed: true }],
   sequencing: [], contingencies: [], explicitRisks: [], unspecified: [], communicationStyleIsMechanism: false, requestedOutcomes: [], assertedExternalEvents: [], rationale: [], unresolvedReferences: [],
 };
 
@@ -47,8 +47,11 @@ describe('completion invariants', () => {
     expect(withIntel / 200).toBeLessThanOrEqual(0.6);
     expect(withoutIntel / 200).toBeGreaterThanOrEqual(0.05);
     expect(withoutIntel / 200).toBeLessThanOrEqual(0.3);
+    // Third parties see nothing unless they detect it...
     expect(perceivedStrategyForActor('khrushchev', concealedGraph).mechanisms).toHaveLength(0);
     expect(perceivedStrategyForActor('khrushchev', concealedGraph, concealedGraph.mechanisms).mechanisms).toHaveLength(1);
+    // ...but the party being approached always knows they were approached.
+    expect(perceivedStrategyForActor('nato', concealedGraph).mechanisms).toHaveLength(1);
   });
 
   it('executes scenario hard rules and conditional authority', () => {

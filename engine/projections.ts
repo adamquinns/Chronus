@@ -161,8 +161,18 @@ export const authoritativeSnapshot = (state: WorldState) => stripModelHidden({
 export const perceivedStrategyForActor = (actorId: string, graph: StrategyGraph, detected: StrategyMechanism[] = []): StrategyGraph => {
   const detectedIds = new Set(detected.map((mechanism) => mechanism.id));
   const visible = graph.mechanisms.filter((mechanism) => {
-    if (mechanism.concealed || mechanism.kind === 'DECEPTION' || mechanism.kind === 'INTELLIGENCE') {
+    // Deception and collection work only if their subject is unaware — that is
+    // the mechanism. Everything else that is merely *private* is still known to
+    // the party it is aimed at: you cannot quietly demand something of someone
+    // without them learning you demanded it. Concealment hides such an act from
+    // third parties, not from the counterparty.
+    if (mechanism.kind === 'DECEPTION' || mechanism.kind === 'INTELLIGENCE') {
       return mechanism.actorIds.includes(actorId) || detectedIds.has(mechanism.id);
+    }
+    if (mechanism.concealed) {
+      return mechanism.actorIds.includes(actorId)
+        || mechanism.targetIds.includes(actorId)
+        || detectedIds.has(mechanism.id);
     }
     return mechanism.targetIds.includes(actorId)
       || mechanism.actorIds.includes(actorId)
