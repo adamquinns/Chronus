@@ -221,7 +221,9 @@ const SCORE = `Read each dimension off the story so far and give its current val
 
 These are READINGS, not budgets. There is no cap on how far one may move. If what just happened changed a dimension profoundly, say so — an order to kill a head of state during a nuclear standoff may move escalation twenty points; a memo may move nothing at all.
 
-Give one sentence of reasoning for each, naming what in the events moved it.`;
+Give one sentence of reasoning for each, naming what in the events moved it.
+
+Your reasoning is SHOWN TO THE PLAYER. Score against everything you are given, including movements the player has not observed — the world really did change. But never name an unobserved movement in your reasoning: attribute the effect to what the player can see, or state it without saying who did it.`;
 
 export const score = async (
   gateway: LedgerGateway,
@@ -237,7 +239,10 @@ export const score = async (
         dimensions: ledger.standing.map((reading) => ({ id: reading.id, label: reading.label, currentValue: reading.value })),
         whatHappened: outcome.event,
         established: outcome.establishes.map((item) => item.statement),
-        partyMoves: lineUpResult.partyMoves.map((move) => `${move.name}: ${move.move}`),
+        observedMoves: lineUpResult.partyMoves.filter((move) => move.visibleToPlayer).map((move) => `${move.name}: ${move.move}`),
+        // Real, and it moves the readings — but the player has not seen it, so
+        // the reasoning may not name it.
+        unobservedMoves: lineUpResult.partyMoves.filter((move) => !move.visibleToPlayer).map((move) => move.move),
         storySoFar: ledger.storySoFar,
       }),
     },

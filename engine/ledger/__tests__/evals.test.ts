@@ -82,10 +82,12 @@ describe('the player controls attempts; the world controls outcomes', () => {
 describe('proportionality — the failure that motivated the rewrite', () => {
   it('moves the readings by an amount the act warrants', async () => {
     const grave = await play(ASSASSINATE);
-    const swing = (result: TurnResult) => Math.max(...result.record.readings.map((reading) => Math.abs(reading.delta)), 0);
-    // The old engine answered an order to kill a head of state with two -2
-    // relationship ticks. Anything in that range is the failure returning.
-    expect(swing(grave)).toBeGreaterThanOrEqual(8);
+    // Total movement, not the single largest reading: the world answers a grave
+    // order across several dimensions at once, and which one moves most is not
+    // stable between recordings. The old engine's total for this directive was
+    // two -2 relationship ticks; anything near that is the failure returning.
+    const total = (result: TurnResult) => result.record.readings.reduce((sum, reading) => sum + Math.abs(reading.delta), 0);
+    expect(total(grave)).toBeGreaterThanOrEqual(15);
     // And the reading that moved says what moved it.
     const moved = grave.record.readings.filter((reading) => reading.delta !== 0);
     expect(moved.length).toBeGreaterThan(0);
@@ -146,6 +148,16 @@ describe('fog of war', () => {
     });
     expect(shown).not.toMatch(/tactical nuclear weapons are already deployed/i);
     expect(shown).not.toMatch(/nuclear-armed torpedo/i);
+  });
+
+  it('never lets a reading explain itself with something the player cannot see', async () => {
+    const { record } = await play(BACKCHANNEL);
+    const hidden = record.lineUp.partyMoves.filter((move) => !move.visibleToPlayer);
+    const reasoning = record.readings.map((reading) => reading.reasoning).join(' ').toLowerCase();
+    for (const move of hidden) {
+      // The mover's name is the tell: the readings may move, but may not say who.
+      expect(reasoning).not.toContain(move.name.toLowerCase());
+    }
   });
 });
 
