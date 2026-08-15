@@ -67,8 +67,8 @@ export interface Entity {
   name: string;
   type: 'Faction' | 'Asset' | 'Figure' | 'Threat';
   description: string;
-  power: number; // 0-100 (Capability)
-  loyalty: number; // 0-100 (Willingness/Alignment). For Threats, this represents "Distance/Inactivity".
+  power?: number; // 0-100 (Capability). Absent when the source does not measure it.
+  loyalty?: number; // 0-100 (Willingness/Alignment). For Threats, "Distance/Inactivity".
   status: string; // e.g., "Mobilizing", "Bankrupt", "Attacking"
 }
 

@@ -41,13 +41,13 @@ export const LedgerSection: React.FC<LedgerSectionProps> = ({
               fontFamily: T3.fontMono, fontSize: T3.s10,
               color: negative ? T3.neg : T3.fg2,
               fontVariantNumeric: 'tabular-nums',
-            }}>{e.power}</span>
+            }}>{e.power ?? ''}</span>
           </div>
           <div style={{
             fontSize: T3.s10, color: T3.fg3, letterSpacing: '0.08em',
             textTransform: 'uppercase', marginTop: 1,
           }}>
-            {e.type} · {e.status}
+            {e.status ? `${e.type} · ${e.status}` : e.type}
           </div>
           {showDescription && (
             <div style={{ fontSize: T3.s11, color: T3.fg3, marginTop: 4, lineHeight: 1.4 }}>

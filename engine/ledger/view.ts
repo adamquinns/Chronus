@@ -145,11 +145,19 @@ export const buildTurnData = (
       status: 'OPEN',
       summary: thread.question,
     })),
+    // The field is `enemies`, not `threats`: an `as unknown as` cast here once
+    // hid the mismatch from the typechecker and blanked the console on entry.
     ledger: {
-      allies: ledger.cast.slice(0, 6).map((member) => ({ id: member.id, name: member.name, detail: member.towardPlayer, kind: 'FIGURE', status: 'ACTIVE' })),
-      threats: ledger.threads.filter((thread) => thread.status === 'OPEN').slice(0, 5).map((thread) => ({ id: thread.id, name: thread.title, detail: thread.ifIgnored, kind: 'THREAT', status: 'ACTIVE' })),
+      allies: ledger.cast.slice(0, 6).map((member) => ({
+        id: member.id, name: member.name, type: 'Figure' as const,
+        description: member.towardPlayer, status: '',
+      })),
+      enemies: ledger.threads.filter((thread) => thread.status === 'OPEN').slice(0, 5).map((thread) => ({
+        id: thread.id, name: thread.title, type: 'Threat' as const,
+        description: thread.ifIgnored, status: 'Open',
+      })),
       assets: [],
-    } as unknown as TurnData['ledger'],
+    },
     choices: suggestions.map((item) => asChoice(item.id, item.directive, item.rationale)),
     gameOver: Boolean(ledger.concluded),
   };

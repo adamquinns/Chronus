@@ -282,7 +282,7 @@ const Laptop: React.FC<ViewProps> = ({
 
         <div style={{ height: 1, background: T3.line1 }} />
 
-        <LedgerSection title="Allies" entries={turn.ledger.allies} />
+        <LedgerSection title="Figures" entries={turn.ledger.allies} />
         <LedgerSection title="Assets" entries={turn.ledger.assets} />
         <LedgerSection title="Threats" entries={turn.ledger.enemies} negative />
       </aside>
@@ -670,7 +670,7 @@ const Mobile: React.FC<MobileProps> = ({
         <button onClick={() => onOpenSheet('ledger')} style={quickNavStyle}>
           <Label style={{ display: 'block', marginBottom: 2 }}>Ledger</Label>
           <span style={{ fontSize: T3.s12, color: T3.fg1 }}>
-            {turn.ledger.allies.length} allies · {turn.ledger.enemies.length} threats
+            {turn.ledger.allies.length} figures · {turn.ledger.enemies.length} threats
           </span>
         </button>
       </section>
@@ -730,7 +730,7 @@ const Mobile: React.FC<MobileProps> = ({
             <div style={{
               marginTop: T3.sp3, display: 'flex', flexDirection: 'column', gap: T3.sp5,
             }}>
-              <LedgerSection title="Allies" entries={turn.ledger.allies} showDescription />
+              <LedgerSection title="Figures" entries={turn.ledger.allies} showDescription />
               <LedgerSection title="Assets" entries={turn.ledger.assets} showDescription />
               <LedgerSection title="Threats" entries={turn.ledger.enemies} negative showDescription />
             </div>
