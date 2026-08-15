@@ -201,6 +201,13 @@ export const commitEffects = (
         const before = entity.status;
         entity.status = (effect as ProposedEffect).setValue as typeof entity.status;
         record(effect, before, entity.status);
+        // Losing the player themselves ends the campaign. The PRD reserves
+        // terminal outcomes for exactly this kind of removal.
+        if (entity.id === state.manifest.playerId && (entity.status === 'DESTROYED' || entity.status === 'INACTIVE')) {
+          state.goal.status = 'FAILED';
+          state.goal.outcomeClass = 'CATASTROPHIC_DEFEAT';
+          state.gameOver = true;
+        }
       }
     } else if (effect.targetType === 'RELATIONSHIP') {
       const relationship = state.relationships[effect.targetId];

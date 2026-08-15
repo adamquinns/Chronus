@@ -22,6 +22,7 @@ import { actorActionsSchema, adjudicationSchema, narrativeSchema, normalizeAdjud
 import { actorVisibleState, authoritativeSnapshot, perceivedStrategyForActor } from './projections';
 import { historicalPriorWeight } from './precedent';
 import { canAccess } from './visibility';
+import { mechanismIsExposing } from './jeopardy';
 
 const relevantActorIds = (graph: StrategyGraph, state: WorldState, depth: TurnDepth) => {
   const ids = new Set<string>();
@@ -60,12 +61,31 @@ const initiativeActorIds = (state: WorldState, depth: TurnDepth) => {
 const fallbackActorAction = (actorId: string, state: WorldState, graph: StrategyGraph, initiative = false): ActorAction => {
   const actor = state.entities[actorId];
   const perceived = perceivedStrategyForActor(actorId, graph);
+  // An actor pressed to comply has a decision to make, and declining is the
+  // ordinary answer when nothing obliges them. Saying so plainly keeps the
+  // offline path capable of the same outcomes as the live one.
+  const pressed = perceived.mechanisms.some((mechanism) =>
+    (mechanism.kind === 'DIRECT_ORDER' || mechanism.kind === 'COERCION') && mechanism.targetIds.includes(actorId));
+  const compelled = state.manifest.authorityRules.some((rule) =>
+    rule.actorId === state.manifest.playerId && rule.targetId === actorId && (rule.mode === 'DIRECT' || rule.mode === 'DELEGATED'));
+  // Authority is not the only thing that decides whether an order is carried
+  // out. Being asked to deliver one's own head of government into harm is
+  // refused by people who are otherwise bound to obey — no pilot volunteers
+  // for that flight.
+  const asksToEndangerThePlayer = graph.mechanisms.some(mechanismIsExposing)
+    && perceived.mechanisms.some((mechanism) => mechanism.targetIds.includes(actorId) || mechanism.kind === 'DIRECT_ORDER');
   return {
     actorId,
     objective: actor.objectives[0] ?? 'Preserve position',
-    action: perceived.mechanisms.length
-      ? `${actor.name} prepares a response using ${actor.capabilities[0] ?? 'available influence'}.`
-      : `${actor.name} continues pursuing ${actor.objectives[0] ?? 'its standing objective'}.`,
+    action: asksToEndangerThePlayer
+      ? `${actor.name} declines to arrange it, refusing to be the instrument of the president’s own exposure, and advises against the whole course.`
+      : pressed && !compelled
+        ? `${actor.name} declines to carry out the demand and advises against it, citing ${actor.constraints[0] ?? 'its own standing constraints'}.`
+        : pressed
+          ? `${actor.name} weighs the order against ${actor.constraints[0] ?? 'its standing constraints'} before acting on it.`
+          : perceived.mechanisms.length
+            ? `${actor.name} prepares a response using ${actor.capabilities[0] ?? 'available influence'}.`
+            : `${actor.name} continues pursuing ${actor.objectives[0] ?? 'its standing objective'}.`,
     mechanisms: [actor.capabilities[0] ?? 'institutional action'],
     perceivedPlayerMechanismIds: perceived.mechanisms.map((item) => item.id),
     beliefKeysUsed: [],
@@ -463,6 +483,7 @@ export const sanitizeAdjudication = (
   feasibility: FeasibilityFinding[] = [],
   actorActions: ActorAction[] = [],
   graph?: StrategyGraph,
+  graveJeopardy = false,
 ): Adjudication => {
   const validTargets: Record<EffectRecommendation['targetType'], Set<string>> = {
     METRIC: new Set(Object.keys(state.metrics)),
@@ -481,7 +502,10 @@ export const sanitizeAdjudication = (
   const modelEffects = adjudication.recommendedEffects.filter((candidate) => {
     if (feasibility.length && !allowedMechanisms.has(candidate.mechanismId)) return false;
     if (!validTargets[candidate.targetType].has(candidate.targetId)) return false;
-    if (depth !== 'DEEP' && (candidate.impactClass === 'SEVERE' || candidate.impactClass === 'SYSTEMIC')) return false;
+    // The ceiling exists so ordinary turns cannot produce world-shaking
+    // numbers. A directive that stakes the player's own person or authority
+    // has earned the right to a world-shaking answer.
+    if (depth !== 'DEEP' && !graveJeopardy && (candidate.impactClass === 'SEVERE' || candidate.impactClass === 'SYSTEMIC')) return false;
     if (candidate.proposedDelta !== undefined && candidate.targetType !== 'RESOURCE') return false;
     // Repair-by-omission: a commitments effect without a commitment string is
     // malformed flavor, never worth aborting a turn over.

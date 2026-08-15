@@ -671,10 +671,19 @@ export interface TurnAudit {
   actorSimulationPackets: ActorSimulationAudit[];
   accessDecisions: AccessDecision[];
   detectionRecords: DetectionRecord[];
+  jeopardy?: JeopardyAssessment;
   narrativePacket?: NarrativePacket;
   worldExtension?: WorldExtensionAudit;
   playerForecast?: PlayerForecast;
   forecastScore?: ForecastScore;
+}
+
+export interface JeopardyAssessment {
+  physical: number;
+  institutional: number;
+  reasons: string[];
+  exposingMechanismIds: Id[];
+  refusableMechanismIds: Id[];
 }
 
 export interface TurnNarrative {

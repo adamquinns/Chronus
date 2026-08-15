@@ -29,6 +29,7 @@ import { validateActorActions, validateAdjudicationProposal } from './validation
 import { snapshotHash } from './audit';
 import { buildCounterfactualBranches } from './branching';
 import { deriveBranchEffects } from './branches';
+import { assessJeopardy, catastropheEffects, catastropheProbability, escalateWithRefusal, jeopardyIsGrave } from './jeopardy';
 import { resolveDetection } from './detection';
 import { buildNarrativePacket } from './narrative';
 import { groundReferences } from './worldExpansion';
@@ -214,6 +215,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
 
   progress(options, 'FEASIBILITY', 'Checking hard constraints', 'Authority, resources, timing, logistics, and communication.');
   const feasibility = checkFeasibility(dryStrategy, world);
+  let jeopardy = assessJeopardy(dryStrategy, feasibility, world);
   const precedents = retrievePrecedents(campaign, dryStrategy);
   options.onPreview?.({
     strategy: dryStrategy.objective,
@@ -249,6 +251,8 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
       runRedTeam(dryStrategy, rawDirective, feasibility, [], world, precedents, options.gateway),
     ]);
   const actorActions = actorSimulation.actions;
+  // Confirmed by the player's own people balking, not by the volume of the order.
+  jeopardy = escalateWithRefusal(jeopardy, actorActions, world);
   const counterfactualBranches = depth === 'DEEP' ? buildCounterfactualBranches(dryStrategy, actorActions, redTeam, world) : [];
   const actorValidation = validateActorActions(actorActions, world, dryStrategy);
   const invalidActorActions = actorValidation.filter((issue) => issue.severity === 'ERROR');
@@ -342,13 +346,13 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     }
   }
   if (proposalFailures.length) throw new Error(`Adjudication rejected: ${proposalFailures[0].message}`);
-  let adjudication = sanitizeAdjudication(rawAdjudication, world, depth, feasibility, actorActions, dryStrategy);
+  let adjudication = sanitizeAdjudication(rawAdjudication, world, depth, feasibility, actorActions, dryStrategy, jeopardyIsGrave(jeopardy));
   let disagreement: ModelDisagreement = { compared: false, material: false, severityScore: 0, differences: [], response: 'NONE' };
   if (needsSecondOpinion && options.gateway) {
     try {
       const secondResult = await secondPromise!;
       if ('error' in secondResult) throw secondResult.error;
-      const second = sanitizeAdjudication(secondResult.value, world, depth, feasibility, actorActions, dryStrategy);
+      const second = sanitizeAdjudication(secondResult.value, world, depth, feasibility, actorActions, dryStrategy, jeopardyIsGrave(jeopardy));
       const reconciled = reconcileAdjudications(adjudication, second);
       adjudication = reconciled.adjudication;
       disagreement = reconciled.disagreement;
@@ -369,13 +373,44 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
   })));
   progress(options, 'ADJUDICATE', 'Causal effects adjudicated', 'Bounded effect recommendations and uncertainty bands are complete.', 'COMPLETED');
 
+  // A directive that stakes the player's person or authority must carry a real
+  // chance of ending badly. Without this the engine can only ever answer a
+  // reckless order with a small number, never with catastrophe.
+  if (jeopardyIsGrave(jeopardy)) {
+    const catastrophic = catastropheEffects(jeopardy, world, actorActions);
+    if (catastrophic.length) {
+      const probability = catastropheProbability(jeopardy);
+      const existing = adjudication.outcomeBands.filter((band) => band.id !== 'jeopardy_catastrophe');
+      adjudication = {
+        ...adjudication,
+        recommendedEffects: [...adjudication.recommendedEffects, ...catastrophic],
+        outcomeBands: normalizeDistribution([
+          ...existing.map((band) => ({ ...band, probability: band.probability * (1 - probability) })),
+          {
+            id: 'jeopardy_catastrophe',
+            label: jeopardy.physical >= 60 ? 'The exposure is fatal' : 'Authority collapses',
+            probability,
+            effectIds: catastrophic.map((effect) => effect.id),
+            description: jeopardy.reasons.join(' '),
+          },
+        ]),
+      };
+      recoveredValidation.push({
+        code: 'JEOPARDY_CATASTROPHE_BAND',
+        severity: 'WARNING',
+        message: `Grave jeopardy (physical ${jeopardy.physical}, institutional ${jeopardy.institutional}): a catastrophic outcome was made reachable at ${(probability * 100).toFixed(0)}%.`,
+      });
+    }
+  }
+
   progress(options, 'UNCERTAINTY', 'Resolving residual uncertainty', 'Using a seeded draw only after causal analysis.');
   const certainMechanismIds = new Set(feasibility
     .filter((finding) => finding.classification === 'CERTAIN')
     .map((finding) => finding.mechanismId));
   const uncertainEffects = adjudication.recommendedEffects
     .filter((effect) => !effect.actorId && !certainMechanismIds.has(effect.mechanismId));
-  const hasResidualUncertainty = uncertainEffects.length > 0 && adjudication.outcomeBands.length > 0;
+  const hasResidualUncertainty = adjudication.outcomeBands.length > 0
+    && (uncertainEffects.length > 0 || adjudication.outcomeBands.some((band) => band.id === 'jeopardy_catastrophe'));
   const draw = hasResidualUncertainty
     ? drawSeeded(campaign.state.rngSeed, detection.cursor)
     : undefined;
@@ -540,6 +575,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
     progressEvents,
     actorSimulationPackets: actorSimulation.packets,
     accessDecisions: buildAccessDecisionMatrix(committed.state),
+    jeopardy,
     detectionRecords: detection.records,
     narrativePacket,
     worldExtension: grounding.audit,
