@@ -783,7 +783,10 @@ const CausalChanges: React.FC<{ turn: TurnData }> = ({ turn }) => {
     <Label tone="sig">Causal ledger · observable changes</Label>
     <div style={{ marginTop: T3.sp2, display: 'flex', flexDirection: 'column', gap: T3.sp2 }}>
       {turn.developments.map((change) => <div key={change.id} style={{ fontSize: T3.s12, color: T3.fg2 }}>
-        <strong style={{ color: T3.fg0 }}>{change.label}</strong> · {String(change.before)} → {String(change.after)}
+        <strong style={{ color: T3.fg0 }}>{change.label}</strong>
+        {change.before === undefined || change.before === null
+          ? <> · {String(change.after)}</>
+          : <> · {String(change.before)} → {String(change.after)}</>}
         <div style={{ color: T3.fg3, marginTop: 2 }}>{change.cause}</div>
       </div>)}
     </div>

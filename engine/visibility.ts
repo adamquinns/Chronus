@@ -86,17 +86,28 @@ export const projectChangesForViewer = (
         : change.targetId;
     const sourceMechanism = graph.mechanisms.find((mechanism) =>
       change.sourceEffectId.includes(mechanism.id));
+    // A creation has no prior value and its raw object is meaningless to a
+    // reader: render it as something entering the world, named.
+    const isCreation = change.field === 'create';
+    const createdName = isCreation && change.after && typeof change.after === 'object'
+      ? ((change.after as { title?: string; name?: string; statement?: string }).title
+        ?? (change.after as { name?: string }).name
+        ?? (change.after as { statement?: string }).statement
+        ?? String(change.targetId))
+      : undefined;
     return [{
       id: change.id,
       sourceEffectId: change.sourceEffectId,
       targetType: change.targetType,
-      label: label ?? 'Observable development',
+      label: (isCreation ? createdName : label) ?? label ?? 'Observable development',
       field: change.field,
-      before: change.before,
-      after: change.after,
-      explanation: sourceMechanism
-        ? `The player attempted to: ${effectsById.get(sourceMechanism.id)}`
-        : 'An observable world process changed independently.',
+      before: isCreation ? undefined : change.before,
+      after: isCreation ? 'entered play' : change.after,
+      explanation: isCreation
+        ? change.cause
+        : sourceMechanism
+          ? `The player attempted to: ${effectsById.get(sourceMechanism.id)}`
+          : 'An observable development with no directive attributable to it.',
       confidence: change.confidence,
     }];
   });
