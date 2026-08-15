@@ -1,0 +1,279 @@
+{
+  "numTotalTestSuites": 6,
+  "numPassedTestSuites": 6,
+  "numFailedTestSuites": 0,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 20,
+  "numPassedTests": 20,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "numTodoTests": 0,
+  "snapshot": {
+    "added": 0,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0,
+    "didUpdate": false
+  },
+  "startTime": 1786738898804,
+  "success": true,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "mandatory single-turn structural eval families"
+          ],
+          "fullName": "mandatory single-turn structural eval families keeps rhetoric invariant and rewards substance over hollow control claims",
+          "status": "passed",
+          "title": "keeps rhetoric invariant and rewards substance over hollow control claims",
+          "duration": 4.168166999999983,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "mandatory single-turn structural eval families"
+          ],
+          "fullName": "mandatory single-turn structural eval families does not upgrade vague input through compiler charity",
+          "status": "passed",
+          "title": "does not upgrade vague input through compiler charity",
+          "duration": 0.5751660000000243,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "mandatory single-turn structural eval families"
+          ],
+          "fullName": "mandatory single-turn structural eval families separates hidden state, sparse beliefs, and all visibility classes with zero tolerance",
+          "status": "passed",
+          "title": "separates hidden state, sparse beliefs, and all visibility classes with zero tolerance",
+          "duration": 1.178042000000005,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "mandatory single-turn structural eval families"
+          ],
+          "fullName": "mandatory single-turn structural eval families enforces capabilities and produces consistent calibrated magnitudes",
+          "status": "passed",
+          "title": "enforces capabilities and produces consistent calibrated magnitudes",
+          "duration": 4.712499999999977,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "mandatory single-turn structural eval families"
+          ],
+          "fullName": "mandatory single-turn structural eval families routes trivial, routine, complex, concealed, novel, and existential cases conservatively",
+          "status": "passed",
+          "title": "routes trivial, routine, complex, concealed, novel, and existential cases conservatively",
+          "duration": 2.041583000000003,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "mandatory single-turn structural eval families"
+          ],
+          "fullName": "mandatory single-turn structural eval families does not rubber-band a dominant player and decays historical priors after divergence",
+          "status": "passed",
+          "title": "does not rubber-band a dominant player and decays historical priors after divergence",
+          "duration": 0.6307499999999777,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "mandatory single-turn structural eval families"
+          ],
+          "fullName": "mandatory single-turn structural eval families uses historical analogs at cold start and same-world precedents after play",
+          "status": "passed",
+          "title": "uses historical analogs at cold start and same-world precedents after play",
+          "duration": 18.579250000000002,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "mandatory single-turn structural eval families"
+          ],
+          "fullName": "mandatory single-turn structural eval families validates all curated scenario packages",
+          "status": "passed",
+          "title": "validates all curated scenario packages",
+          "duration": 1.8443329999999492,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "mandatory single-turn structural eval families"
+          ],
+          "fullName": "mandatory single-turn structural eval families materially outperforms the retired d20 baseline on deterministic and impossible actions",
+          "status": "passed",
+          "title": "materially outperforms the retired d20 baseline on deterministic and impossible actions",
+          "duration": 7.3337080000000014,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1786738899368,
+      "endTime": 1786738899409.3337,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/adamquinn/Documents/ChatGPT/Chronos/engine/__tests__/evals.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "mandatory multi-turn regression suites"
+          ],
+          "fullName": "mandatory multi-turn regression suites keeps the Cuban Missile Crisis coherent for 12 turns",
+          "status": "passed",
+          "title": "keeps the Cuban Missile Crisis coherent for 12 turns",
+          "duration": 70.21808400000003,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "mandatory multi-turn regression suites"
+          ],
+          "fullName": "mandatory multi-turn regression suites preserves coalition relationships, precedents, hidden deals, and objective continuity for 15 turns",
+          "status": "passed",
+          "title": "preserves coalition relationships, precedents, hidden deals, and objective continuity for 15 turns",
+          "duration": 47.46237500000001,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "mandatory multi-turn regression suites"
+          ],
+          "fullName": "mandatory multi-turn regression suites keeps Twilight of the Republic coherent through its full 12-turn horizon",
+          "status": "passed",
+          "title": "keeps Twilight of the Republic coherent through its full 12-turn horizon",
+          "duration": 41.60820800000005,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "mandatory multi-turn regression suites"
+          ],
+          "fullName": "mandatory multi-turn regression suites preserves military logistics, force capability, hidden reserves, and delayed arcs for 12 turns",
+          "status": "passed",
+          "title": "preserves military logistics, force capability, hidden reserves, and delayed arcs for 12 turns",
+          "duration": 22.821125000000052,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "mandatory multi-turn regression suites"
+          ],
+          "fullName": "mandatory multi-turn regression suites runs an accepted custom-package world for 10+ turns without corrupting its schema",
+          "status": "passed",
+          "title": "runs an accepted custom-package world for 10+ turns without corrupting its schema",
+          "duration": 18.10495800000001,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "mandatory multi-turn regression suites"
+          ],
+          "fullName": "mandatory multi-turn regression suites avoids narrative fatigue markers and uncontrolled length across sustained play",
+          "status": "passed",
+          "title": "avoids narrative fatigue markers and uncontrolled length across sustained play",
+          "duration": 17.485291000000075,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1786738899366,
+      "endTime": 1786738899584.4854,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/adamquinn/Documents/ChatGPT/Chronos/engine/__tests__/multiTurn.test.ts"
+    },
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "bounded validation recovery and disagreement"
+          ],
+          "fullName": "bounded validation recovery and disagreement accepts dependencies that reference existing authoritative world objects",
+          "status": "passed",
+          "title": "accepts dependencies that reference existing authoritative world objects",
+          "duration": 5.957250000000045,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "bounded validation recovery and disagreement"
+          ],
+          "fullName": "bounded validation recovery and disagreement repairs once and commits only the validated proposal",
+          "status": "passed",
+          "title": "repairs once and commits only the validated proposal",
+          "duration": 19.27645799999999,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "bounded validation recovery and disagreement"
+          ],
+          "fullName": "bounded validation recovery and disagreement escalates once after a failed repair and then commits",
+          "status": "passed",
+          "title": "escalates once after a failed repair and then commits",
+          "duration": 2.984375,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "bounded validation recovery and disagreement"
+          ],
+          "fullName": "bounded validation recovery and disagreement aborts without mutating authoritative input after the bounded attempts fail",
+          "status": "passed",
+          "title": "aborts without mutating authoritative input after the bounded attempts fail",
+          "duration": 2.399749999999983,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "bounded validation recovery and disagreement"
+          ],
+          "fullName": "bounded validation recovery and disagreement treats material independent disagreement as uncertainty instead of averaging conclusions",
+          "status": "passed",
+          "title": "treats material independent disagreement as uncertainty instead of averaging conclusions",
+          "duration": 0.27858299999996916,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1786738899364,
+      "endTime": 1786738899395.3997,
+      "status": "passed",
+      "message": "",
+      "name": "/Users/adamquinn/Documents/ChatGPT/Chronos/engine/__tests__/recovery.test.ts"
+    }
+  ],
+  "generatedAt": "2026-08-14T20:21:39.770Z"
+}

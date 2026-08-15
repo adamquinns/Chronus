@@ -1,0 +1,45 @@
+{
+  "generatedAt": "2026-08-14T23:13:15.360Z",
+  "passed": 2,
+  "failed": 1,
+  "usage": {
+    "requests": 34,
+    "inputTokens": 231427,
+    "outputTokens": 62678,
+    "costUsd": 1.49155565
+  },
+  "modelRoutes": {
+    "strategy_compiler": "openai/gpt-5.6-luna",
+    "critic": "anthropic/claude-sonnet-5",
+    "actor_standard": "openai/gpt-5.6-luna",
+    "actor_deep": "anthropic/claude-sonnet-5",
+    "adjudicator": "openai/gpt-5.6-terra",
+    "deep_second_opinion": "anthropic/claude-fable-5",
+    "narrator": "anthropic/claude-sonnet-5",
+    "validator": "openai/gpt-5.6-luna",
+    "scenario_architect": "openai/gpt-5.6-terra",
+    "scenario_researcher": "anthropic/claude-sonnet-5",
+    "option_generator": "openai/gpt-5.6-luna",
+    "world_grounder": "openai/gpt-5.6-luna"
+  },
+  "results": [
+    {
+      "name": "Model grounding accuracy (graded)",
+      "passed": true,
+      "detail": "Dean Rusk correctly matches the reference as the real U.S. Secretary of State during the Cuban Missile Crisis, with capabilities and constraints properly bounded to the diplomatic role (no military command, acts under presidential direction). No post-1962 knowledge appears; all facts are consistent with October 1962. Provenance is honest, using VERIFIED_FACT with citable, appropriate sources (State Department Office of the Historian, NATO official sources). The added North Atlantic Council entity is reasonably grounded to 1962 NATO structure with appropriate constraints. Minor nitpick: the NATO Archives declassified source link is a generic reference rather than a specific 1962 primary document, but this is a small provenance quality issue rather than a fabrication or anachronism.",
+      "evidence": {
+        "entity": "Dean Rusk"
+      }
+    },
+    {
+      "name": "Narrative distinctions (graded)",
+      "passed": false,
+      "detail": "The piece does the hard part well: it cleanly separates player-attempted actions (bring him by force) from blocked requests (resign demand, RFK installation, executive-branch order) from independent world-actor actions (B-59's radio/battery decisions, Khrushchev's command directive and secret letter) from unresolved requested outcomes (LBJ resigning in 15 min, RFK as VP in an hour), and it never asserts that the resignation or RFK's installation actually happened — both are explicitly flagged as player assertions with no committed resolution. Named specifics (McNamara, LeMay, RFK, Khrushchev, Submarine B-59) and concrete details (long-wave radio listening window, battery conservation, a private letter proposing missile withdrawal for a non-invasion pledge, Presidium hardliners) are present in abundance. However, strategicConsequences opens with the literal disallowed filler phrase 'The order is in motion, but only committed player-visible changes count as history,' which is one of the explicitly banned filler constructions. That phrase's presence is a direct violation of the stated avoidance criterion even though the surrounding content is otherwise well-differentiated."
+    },
+    {
+      "name": "Audit reconstruction (live turns)",
+      "passed": true,
+      "detail": "Both tail live turns reconstruct exactly from their audits."
+    }
+  ]
+}

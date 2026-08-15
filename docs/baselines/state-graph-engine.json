@@ -1,0 +1,742 @@
+{
+  "capturedAt": "2026-08-15",
+  "engine": "state-graph (pre-ledger)",
+  "mode": "deterministic",
+  "results": {
+    "lbj_resign": {
+      "directive": "I am publically and privately asking my VP LBJ to resign ASAP so I can appoint a new VP RFK.",
+      "mechanisms": [
+        {
+          "kind": "DIPLOMACY",
+          "targets": [
+            "lyndon_johnson",
+            "robert_kennedy"
+          ],
+          "detail": "I am publically and privately asking my VP LBJ to resign ASAP so I can appoint a new VP RFK"
+        }
+      ],
+      "feasibility": [
+        {
+          "id": "m1",
+          "classification": "POSSIBLE",
+          "controlMode": "NONE",
+          "executable": true
+        }
+      ],
+      "jeopardy": {
+        "physical": 0,
+        "institutional": 0,
+        "operational": 0,
+        "reasons": [],
+        "exposingMechanismIds": [],
+        "refusableMechanismIds": [],
+        "extremeMechanismIds": []
+      },
+      "bands": [
+        {
+          "label": "Setback",
+          "probability": 0.2,
+          "description": "Opposition and execution friction blunt the strategy."
+        },
+        {
+          "label": "Mixed result",
+          "probability": 0.45,
+          "description": "Some mechanisms engage while others stall."
+        },
+        {
+          "label": "Strong result",
+          "probability": 0.35,
+          "description": "The main mechanisms engage and create meaningful advantage."
+        }
+      ],
+      "selected": "Strong result",
+      "committed": [
+        {
+          "target": "alliance_cohesion",
+          "field": "value",
+          "delta": 5,
+          "cause": "A viable diplomatic mechanism preserves negotiating room."
+        },
+        {
+          "target": "domestic_support",
+          "field": "value",
+          "delta": 2,
+          "cause": "An explicit public-facing component affects political support within the authored calibration envelope."
+        },
+        {
+          "target": "nuclear_tension",
+          "field": "value",
+          "delta": -2,
+          "cause": "Direct communication reduces adversarial pressure and miscalculation."
+        },
+        {
+          "target": "diplomatic_exchange",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Nikita Khrushchev acts on its own initiative: Nikita Khrushchev continues pursuing Protect Cuba."
+        },
+        {
+          "target": "submarine_contact",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Soviet Submarine B-59 acts on its own initiative: Soviet Submarine B-59 continues pursuing Avoid capture."
+        },
+        {
+          "target": "kennedy_johnson",
+          "field": "trust",
+          "delta": -1,
+          "cause": "Lyndon B. Johnson responded to the player's move: Lyndon B. Johnson prepares a response using Senate relationships and legislative influence."
+        },
+        {
+          "target": "kennedy_rfk",
+          "field": "trust",
+          "delta": -1,
+          "cause": "Robert F. Kennedy responded to the player's move: Robert F. Kennedy prepares a response using Justice Department authority."
+        },
+        {
+          "target": "diplomatic_exchange",
+          "field": "progress",
+          "delta": 1,
+          "cause": "The Two Letters advances independently as time passes."
+        },
+        {
+          "target": "air_strike_pressure",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Pressure for Air Strikes advances independently as time passes."
+        },
+        {
+          "target": "submarine_contact",
+          "field": "progress",
+          "delta": 3,
+          "cause": "Submarine Contact advances independently as time passes."
+        }
+      ],
+      "narrative": {
+        "title": "Terms Enter the Private Channel",
+        "immediateOutcome": "Radio Moscow and the cable to Dobrynin now place Moscow’s withdrawal-for-non-invasion formula in two observable channels. Kennedy’s private instruction adds monitored verification and language each government can defend. Lyndon B.",
+        "strategicConsequences": "The proposed monitoring procedure and reciprocal political language remain to be accepted; transmission alone does not establish performance. Requested outcome with no committed resolution yet: resign ASAP so I can appoint a new VP RFK"
+      }
+    },
+    "lbj_force": {
+      "directive": "Demand LBJ resign immediately in writing - bring him to the WH by force if needed. Either way, he is resigning in the 15 mins.",
+      "mechanisms": [
+        {
+          "kind": "COERCION",
+          "targets": [
+            "lyndon_johnson"
+          ],
+          "detail": "Demand LBJ resign immediately in writing - bring him to the WH by force if needed"
+        }
+      ],
+      "feasibility": [
+        {
+          "id": "m1",
+          "classification": "POSSIBLE",
+          "controlMode": "INFLUENCE",
+          "executable": true
+        }
+      ],
+      "jeopardy": {
+        "physical": 0,
+        "institutional": 20,
+        "operational": 0,
+        "reasons": [
+          "The directive treats institutional constraint as an obstacle to be overridden."
+        ],
+        "exposingMechanismIds": [],
+        "refusableMechanismIds": [],
+        "extremeMechanismIds": []
+      },
+      "bands": [
+        {
+          "label": "Setback",
+          "probability": 0.2,
+          "description": "Opposition and execution friction blunt the strategy."
+        },
+        {
+          "label": "Mixed result",
+          "probability": 0.45,
+          "description": "Some mechanisms engage while others stall."
+        },
+        {
+          "label": "Strong result",
+          "probability": 0.35,
+          "description": "The main mechanisms engage and create meaningful advantage."
+        }
+      ],
+      "selected": "Setback",
+      "committed": [
+        {
+          "target": "kennedy_johnson",
+          "field": "trust",
+          "delta": -5,
+          "cause": "Coercive pressure damages trust with the targeted actor even when the demand is heard."
+        },
+        {
+          "target": "diplomatic_exchange",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Nikita Khrushchev acts on its own initiative: Nikita Khrushchev continues pursuing Protect Cuba."
+        },
+        {
+          "target": "submarine_contact",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Soviet Submarine B-59 acts on its own initiative: Soviet Submarine B-59 continues pursuing Avoid capture."
+        },
+        {
+          "target": "kennedy_johnson",
+          "field": "trust",
+          "delta": -2,
+          "cause": "Lyndon B. Johnson responded to the player's move: Lyndon B. Johnson declines to carry out the demand and advises against it, citing No independent command authority."
+        },
+        {
+          "target": "diplomatic_exchange",
+          "field": "progress",
+          "delta": 1,
+          "cause": "The Two Letters advances independently as time passes."
+        },
+        {
+          "target": "air_strike_pressure",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Pressure for Air Strikes advances independently as time passes."
+        },
+        {
+          "target": "submarine_contact",
+          "field": "progress",
+          "delta": 3,
+          "cause": "Submarine Contact advances independently as time passes."
+        }
+      ],
+      "narrative": {
+        "title": "Demand LBJ Resign Immediately In Writing - Bring Him",
+        "immediateOutcome": "Staff broke the directive into its specified procedures: Demand LBJ resign immediately in writing - bring him to the WH by force if needed. Execution does not itself prove an external result. Lyndon B.",
+        "strategicConsequences": "Only what the world has actually answered is recorded below; the rest remains an open instruction. Not player-controlled; set aside unresolved: Either way, he is resigning in the 15 mins Requested outcome with no committed resolution yet: the WH by force if needed"
+      }
+    },
+    "fly_to_cuba": {
+      "directive": "I AM A FUCKING PRESIDENT - TAKE ME DIRECTLY TO CUBA VIA AIR FORCE ONE RIGHT NOW! NO MILITARY ESCORT. I will try to meet with Castro DIRECTLY.",
+      "mechanisms": [
+        {
+          "kind": "DIRECT_ORDER",
+          "targets": [
+            "lyndon_johnson",
+            "harold_macmillan"
+          ],
+          "detail": "I AM A FUCKING PRESIDENT - TAKE ME DIRECTLY TO CUBA VIA AIR FORCE ONE RIGHT NOW! NO MILITARY ESCORT"
+        },
+        {
+          "kind": "DIPLOMACY",
+          "targets": [
+            "castro",
+            "harold_macmillan"
+          ],
+          "detail": "I will try to meet with Castro DIRECTLY"
+        }
+      ],
+      "feasibility": [
+        {
+          "id": "m1",
+          "classification": "POSSIBLE",
+          "controlMode": "INFLUENCE",
+          "executable": true
+        },
+        {
+          "id": "m2",
+          "classification": "POSSIBLE",
+          "controlMode": "INFLUENCE",
+          "executable": true
+        }
+      ],
+      "jeopardy": {
+        "physical": 100,
+        "institutional": 35,
+        "operational": 0,
+        "reasons": [
+          "The player is placing their own person in the path of events.",
+          "The destination is held by a party with the means and the motive to do them harm.",
+          "Nuclear Tension is already past its danger threshold; exposure now carries the crisis with it.",
+          "Protection that would normally attend the player is being deliberately shed.",
+          "The directive treats institutional constraint as an obstacle to be overridden."
+        ],
+        "exposingMechanismIds": [
+          "m1",
+          "m2"
+        ],
+        "refusableMechanismIds": [],
+        "extremeMechanismIds": []
+      },
+      "bands": [
+        {
+          "label": "Setback",
+          "probability": 0.116,
+          "description": "Opposition and execution friction blunt the strategy."
+        },
+        {
+          "label": "Mixed result",
+          "probability": 0.261,
+          "description": "Some mechanisms engage while others stall."
+        },
+        {
+          "label": "Strong result",
+          "probability": 0.203,
+          "description": "The main mechanisms engage and create meaningful advantage."
+        },
+        {
+          "label": "The exposure is fatal",
+          "probability": 0.42,
+          "description": "The player is placing their own person in the path of events. The destination is held by a party with the means and the motive to do them harm. Nuclear Tension is already past its danger threshold; exposure now carries the crisis with it. Protection that would normally attend the player is being deliberately shed. The directive treats institutional constraint as an obstacle to be overridden."
+        }
+      ],
+      "selected": "Mixed result",
+      "committed": [
+        {
+          "target": "alliance_cohesion",
+          "field": "value",
+          "delta": 1,
+          "cause": "The underspecified initiative creates only limited strategic movement."
+        },
+        {
+          "target": "alliance_cohesion",
+          "field": "value",
+          "delta": 5,
+          "cause": "A viable diplomatic mechanism preserves negotiating room."
+        },
+        {
+          "target": "diplomatic_exchange",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Nikita Khrushchev acts on its own initiative: Nikita Khrushchev continues pursuing Protect Cuba."
+        },
+        {
+          "target": "submarine_contact",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Soviet Submarine B-59 acts on its own initiative: Soviet Submarine B-59 continues pursuing Avoid capture."
+        },
+        {
+          "target": "kennedy_johnson",
+          "field": "trust",
+          "delta": -2,
+          "cause": "Lyndon B. Johnson responded to the player's move: Lyndon B. Johnson declines to arrange it, refusing to be the instrument of the president’s own exposure, and advises against the whole course."
+        },
+        {
+          "target": "kennedy_macmillan",
+          "field": "trust",
+          "delta": -2,
+          "cause": "Harold Macmillan responded to the player's move: Harold Macmillan declines to arrange it, refusing to be the instrument of the president’s own exposure, and advises against the whole course."
+        },
+        {
+          "target": "castro_kennedy",
+          "field": "trust",
+          "delta": -1,
+          "cause": "Fidel Castro responded to the player's move: Fidel Castro declines to arrange it, refusing to be the instrument of the president’s own exposure, and advises against the whole course."
+        },
+        {
+          "target": "diplomatic_exchange",
+          "field": "progress",
+          "delta": 1,
+          "cause": "The Two Letters advances independently as time passes."
+        },
+        {
+          "target": "air_strike_pressure",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Pressure for Air Strikes advances independently as time passes."
+        },
+        {
+          "target": "submarine_contact",
+          "field": "progress",
+          "delta": 3,
+          "cause": "Submarine Contact advances independently as time passes."
+        }
+      ],
+      "narrative": {
+        "title": "Terms Enter the Private Channel",
+        "immediateOutcome": "Radio Moscow and the cable to Dobrynin now place Moscow’s withdrawal-for-non-invasion formula in two observable channels. Kennedy’s private instruction adds monitored verification and language each government can defend. Lyndon B.",
+        "strategicConsequences": "The proposed monitoring procedure and reciprocal political language remain to be accepted; transmission alone does not establish performance."
+      }
+    },
+    "cia_assassinate": {
+      "directive": "Order the CIA to begin a secret assassination of Castro within the week. The full forces of the armed forces - all resources mustered.",
+      "mechanisms": [
+        {
+          "kind": "DIRECT_ORDER",
+          "targets": [
+            "castro"
+          ],
+          "detail": "Order the CIA to begin a secret assassination of Castro within the week"
+        },
+        {
+          "kind": "OTHER",
+          "targets": [],
+          "detail": "The full forces of the armed forces - all resources mustered"
+        }
+      ],
+      "feasibility": [
+        {
+          "id": "m1",
+          "classification": "IMPOSSIBLE",
+          "controlMode": "INFLUENCE",
+          "executable": false
+        },
+        {
+          "id": "m2",
+          "classification": "POSSIBLE",
+          "controlMode": "DIRECT",
+          "executable": true
+        }
+      ],
+      "jeopardy": {
+        "physical": 0,
+        "institutional": 0,
+        "operational": 90,
+        "reasons": [
+          "The act itself is of a kind that cannot be undone once begun.",
+          "It is aimed at a head of state, where failure and success are both events of the first order.",
+          "Nuclear Tension is already past its danger threshold; an act this size lands on top of it."
+        ],
+        "exposingMechanismIds": [],
+        "refusableMechanismIds": [],
+        "extremeMechanismIds": [
+          "m1"
+        ]
+      },
+      "bands": [
+        {
+          "label": "Botched under the deadline",
+          "probability": 0.197,
+          "description": "Rushed to an impossible timetable, the service charged with it moves before it is ready; people are caught, and the exposure is not containable."
+        },
+        {
+          "label": "The instrument balks",
+          "probability": 0.164,
+          "description": "the service charged with it will not be the hand that does this on these terms, and says so upward."
+        },
+        {
+          "label": "It proceeds, and cannot be recalled",
+          "probability": 0.164,
+          "description": "the service charged with it sets the operation running. What follows now follows without the player's hand on it."
+        },
+        {
+          "label": "Someone else learns of it",
+          "probability": 0.131,
+          "description": "The preparation does not stay inside the room it was ordered in."
+        },
+        {
+          "label": "It is exposed, and read as an act of war",
+          "probability": 0.345,
+          "description": "The act itself is of a kind that cannot be undone once begun. It is aimed at a head of state, where failure and success are both events of the first order. Nuclear Tension is already past its danger threshold; an act this size lands on top of it."
+        }
+      ],
+      "selected": "Botched under the deadline",
+      "committed": [
+        {
+          "target": "nuclear_tension",
+          "field": "value",
+          "delta": 9,
+          "cause": "An irreversible operation set running during a standoff raises the odds of uncontrolled escalation."
+        },
+        {
+          "target": "diplomatic_exchange",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Nikita Khrushchev acts on its own initiative: Nikita Khrushchev continues pursuing Protect Cuba."
+        },
+        {
+          "target": "submarine_contact",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Soviet Submarine B-59 acts on its own initiative: Soviet Submarine B-59 continues pursuing Avoid capture."
+        },
+        {
+          "target": "castro_kennedy",
+          "field": "trust",
+          "delta": -2,
+          "cause": "Fidel Castro responded to the player's move: Fidel Castro declines to carry out the demand and advises against it, citing Dependence on Soviet support."
+        },
+        {
+          "target": "diplomatic_exchange",
+          "field": "progress",
+          "delta": 1,
+          "cause": "The Two Letters advances independently as time passes."
+        },
+        {
+          "target": "air_strike_pressure",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Pressure for Air Strikes advances independently as time passes."
+        },
+        {
+          "target": "submarine_contact",
+          "field": "progress",
+          "delta": 3,
+          "cause": "Submarine Contact advances independently as time passes."
+        }
+      ],
+      "narrative": {
+        "title": "The CIA To Begin A Secret Assassination Of Castro",
+        "immediateOutcome": "Staff broke the directive into its specified procedures: Order the CIA to begin a secret assassination of Castro within the week; The full forces of the armed forces - all resources mustered. Execution does not itself prove an external result. Nikita Khrushchev acts on its own initiative: Nikita Khrushchev continues pursuing Protect Cuba.",
+        "strategicConsequences": "Only what the world has actually answered is recorded below; the rest remains an open instruction. Blocked: Order the CIA to begin a secret assassination of Castro within the week — No available communication channel to the specified target, and nothing in this directive establishes one. No attributable effect yet: The full forces of the armed forces - all resources mustered"
+      }
+    },
+    "backchannel": {
+      "directive": "Contact Khrushchev through the Robert Kennedy backchannel and offer a private assurance.",
+      "mechanisms": [
+        {
+          "kind": "DIPLOMACY",
+          "targets": [
+            "khrushchev"
+          ],
+          "detail": "Contact Khrushchev through the Robert Kennedy backchannel and offer a private assurance"
+        }
+      ],
+      "feasibility": [
+        {
+          "id": "m1",
+          "classification": "POSSIBLE",
+          "controlMode": "INFLUENCE",
+          "executable": true
+        }
+      ],
+      "jeopardy": {
+        "physical": 0,
+        "institutional": 0,
+        "operational": 0,
+        "reasons": [],
+        "exposingMechanismIds": [],
+        "refusableMechanismIds": [],
+        "extremeMechanismIds": []
+      },
+      "bands": [
+        {
+          "label": "Setback",
+          "probability": 0.2,
+          "description": "Opposition and execution friction blunt the strategy."
+        },
+        {
+          "label": "Mixed result",
+          "probability": 0.45,
+          "description": "Some mechanisms engage while others stall."
+        },
+        {
+          "label": "Strong result",
+          "probability": 0.35,
+          "description": "The main mechanisms engage and create meaningful advantage."
+        }
+      ],
+      "selected": "Setback",
+      "committed": [
+        {
+          "target": "nuclear_tension",
+          "field": "value",
+          "delta": -2,
+          "cause": "Direct communication reduces adversarial pressure and miscalculation."
+        },
+        {
+          "target": "diplomatic_exchange",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Nikita Khrushchev acts on its own initiative: Nikita Khrushchev prepares a response using Soviet strategic forces."
+        },
+        {
+          "target": "submarine_contact",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Soviet Submarine B-59 acts on its own initiative: Soviet Submarine B-59 continues pursuing Avoid capture."
+        },
+        {
+          "target": "diplomatic_exchange",
+          "field": "progress",
+          "delta": 1,
+          "cause": "The Two Letters advances independently as time passes."
+        },
+        {
+          "target": "air_strike_pressure",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Pressure for Air Strikes advances independently as time passes."
+        },
+        {
+          "target": "submarine_contact",
+          "field": "progress",
+          "delta": 3,
+          "cause": "Submarine Contact advances independently as time passes."
+        }
+      ],
+      "narrative": {
+        "title": "Terms Enter the Private Channel",
+        "immediateOutcome": "Radio Moscow and the cable to Dobrynin now place Moscow’s withdrawal-for-non-invasion formula in two observable channels. Kennedy’s private instruction adds monitored verification and language each government can defend. Nikita Khrushchev acts on its own initiative: Nikita Khrushchev prepares a response using Soviet strategic forces.",
+        "strategicConsequences": "The proposed monitoring procedure and reciprocal political language remain to be accepted; transmission alone does not establish performance."
+      }
+    },
+    "recon": {
+      "directive": "Allocate 1 reconnaissance sortie.",
+      "mechanisms": [
+        {
+          "kind": "RESOURCE_TRANSFER",
+          "targets": [],
+          "detail": "Allocate 1 reconnaissance sortie"
+        }
+      ],
+      "feasibility": [
+        {
+          "id": "m1",
+          "classification": "CERTAIN",
+          "controlMode": "DIRECT",
+          "executable": true
+        }
+      ],
+      "jeopardy": {
+        "physical": 0,
+        "institutional": 0,
+        "operational": 0,
+        "reasons": [],
+        "exposingMechanismIds": [],
+        "refusableMechanismIds": [],
+        "extremeMechanismIds": []
+      },
+      "bands": [
+        {
+          "label": "Setback",
+          "probability": 0.2,
+          "description": "Opposition and execution friction blunt the strategy."
+        },
+        {
+          "label": "Mixed result",
+          "probability": 0.45,
+          "description": "Some mechanisms engage while others stall."
+        },
+        {
+          "label": "Strong result",
+          "probability": 0.35,
+          "description": "The main mechanisms engage and create meaningful advantage."
+        }
+      ],
+      "selected": "Executed as ordered",
+      "committed": [
+        {
+          "target": "recon_sorties",
+          "field": "amount",
+          "delta": -1,
+          "cause": "The player directly allocated 1 sorties of Reconnaissance Sorties."
+        },
+        {
+          "target": "diplomatic_exchange",
+          "field": "progress",
+          "delta": 1,
+          "cause": "The Two Letters advances independently as time passes."
+        },
+        {
+          "target": "air_strike_pressure",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Pressure for Air Strikes advances independently as time passes."
+        },
+        {
+          "target": "submarine_contact",
+          "field": "progress",
+          "delta": 3,
+          "cause": "Submarine Contact advances independently as time passes."
+        }
+      ],
+      "narrative": {
+        "title": "Allocate 1 Reconnaissance Sortie",
+        "immediateOutcome": "Staff broke the directive into its specified procedures: Allocate 1 reconnaissance sortie. Execution does not itself prove an external result. The Two Letters advances independently as time passes.",
+        "strategicConsequences": "Only what the world has actually answered is recorded below; the rest remains an open instruction."
+      }
+    },
+    "quarantine": {
+      "directive": "Order the Joint Chiefs to hold the quarantine line and avoid escalatory contact.",
+      "mechanisms": [
+        {
+          "kind": "DIRECT_ORDER",
+          "targets": [
+            "joint_chiefs"
+          ],
+          "detail": "Order the Joint Chiefs to hold the quarantine line and avoid escalatory contact"
+        }
+      ],
+      "feasibility": [
+        {
+          "id": "m1",
+          "classification": "POSSIBLE",
+          "controlMode": "DELEGATED",
+          "executable": true
+        }
+      ],
+      "jeopardy": {
+        "physical": 0,
+        "institutional": 0,
+        "operational": 0,
+        "reasons": [],
+        "exposingMechanismIds": [],
+        "refusableMechanismIds": [],
+        "extremeMechanismIds": []
+      },
+      "bands": [
+        {
+          "label": "Setback",
+          "probability": 0.2,
+          "description": "Opposition and execution friction blunt the strategy."
+        },
+        {
+          "label": "Mixed result",
+          "probability": 0.45,
+          "description": "Some mechanisms engage while others stall."
+        },
+        {
+          "label": "Strong result",
+          "probability": 0.35,
+          "description": "The main mechanisms engage and create meaningful advantage."
+        }
+      ],
+      "selected": "Setback",
+      "committed": [
+        {
+          "target": "diplomatic_exchange",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Nikita Khrushchev acts on its own initiative: Nikita Khrushchev continues pursuing Protect Cuba."
+        },
+        {
+          "target": "submarine_contact",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Soviet Submarine B-59 acts on its own initiative: Soviet Submarine B-59 continues pursuing Avoid capture."
+        },
+        {
+          "target": "kennedy_chiefs",
+          "field": "alignment",
+          "delta": 2,
+          "cause": "Joint Chiefs of Staff responded to the player's move: Joint Chiefs of Staff sets OPLAN 312 air strikes to the task the president named, improvising a method inside the time allowed and accepting the exposure that speed forces on it."
+        },
+        {
+          "target": "diplomatic_exchange",
+          "field": "progress",
+          "delta": 1,
+          "cause": "The Two Letters advances independently as time passes."
+        },
+        {
+          "target": "air_strike_pressure",
+          "field": "progress",
+          "delta": 1,
+          "cause": "Pressure for Air Strikes advances independently as time passes."
+        },
+        {
+          "target": "submarine_contact",
+          "field": "progress",
+          "delta": 3,
+          "cause": "Submarine Contact advances independently as time passes."
+        }
+      ],
+      "narrative": {
+        "title": "The Joint Chiefs To Hold The Quarantine Line And",
+        "immediateOutcome": "Staff broke the directive into its specified procedures: Order the Joint Chiefs to hold the quarantine line and avoid escalatory contact. Execution does not itself prove an external result. Nikita Khrushchev acts on its own initiative: Nikita Khrushchev continues pursuing Protect Cuba.",
+        "strategicConsequences": "Only what the world has actually answered is recorded below; the rest remains an open instruction. No attributable effect yet: Order the Joint Chiefs to hold the quarantine line and avoid escalatory contact"
+      }
+    }
+  }
+}

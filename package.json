@@ -8,20 +8,40 @@
     "build": "vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "eval": "npm run eval:structural && npm run eval:baseline && npm run eval:live && npm run eval:aggregate",
+    "eval:structural": "vitest run engine/__tests__/evals.test.ts engine/__tests__/multiTurn.test.ts engine/__tests__/recovery.test.ts --reporter=json --outputFile=evals/results/structural.json && node --import tsx evals/stamp-report.ts evals/results/structural.json",
+    "eval:baseline": "node --import tsx evals/baseline-report.ts",
+    "eval:live": "node --import tsx evals/run.ts",
+    "eval:custom": "node --import tsx evals/custom-live.ts",
+    "eval:multiturn": "node --import tsx evals/multiturn-live.ts",
+    "eval:aggregate": "node --import tsx evals/aggregate.ts",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "deploy": "gh-pages -d dist",
+    "eval:matrix": "node --import tsx evals/preset-matrix.ts",
+    "eval:dynamic": "node --import tsx evals/dynamic-world-live.ts",
+    "cassette:record": "node --import tsx evals/record-cassette.ts"
   },
   "dependencies": {
-    "@google/genai": "^1.31.0",
+    "idb": "^8.0.3",
     "lucide-react": "^0.556.0",
     "react": "^19.2.1",
-    "react-dom": "^19.2.1"
+    "react-dom": "^19.2.1",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^5.0.0",
+    "autoprefixer": "^10.4.21",
     "gh-pages": "^6.3.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.20.6",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "vitest": "^3.2.4"
   }
 }

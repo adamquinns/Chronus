@@ -3,8 +3,27 @@
 export interface GameStats {
   stability: number;
   wealth: number;
-  support: number; 
-  primaryStatValue: number; 
+  support: number;
+  primaryStatValue: number;
+}
+
+export interface MetricDisplay {
+  id: string;
+  label: string;
+  value: number;
+  display: string;
+  delta: number;
+  confidence: string;
+  danger: boolean;
+}
+
+export interface CausalDevelopment {
+  id: string;
+  label: string;
+  field: string;
+  before: unknown;
+  after: unknown;
+  cause: string;
 }
 
 export interface StatsDelta {
@@ -48,8 +67,8 @@ export interface Entity {
   name: string;
   type: 'Faction' | 'Asset' | 'Figure' | 'Threat';
   description: string;
-  power: number; // 0-100 (Capability)
-  loyalty: number; // 0-100 (Willingness/Alignment). For Threats, this represents "Distance/Inactivity".
+  power?: number; // 0-100 (Capability). Absent when the source does not measure it.
+  loyalty?: number; // 0-100 (Willingness/Alignment). For Threats, "Distance/Inactivity".
   status: string; // e.g., "Mobilizing", "Bankrupt", "Attacking"
 }
 
@@ -72,37 +91,37 @@ export interface WorldLedger {
 export interface Advisor {
   id: string;
   name: string;
-  role: string; 
-  advice: string; 
-  bias: 'force' | 'diplomacy' | 'profit' | 'innovation'; 
+  role: string;
+  advice: string;
+  bias: 'force' | 'diplomacy' | 'profit' | 'innovation';
   status?: 'Active' | 'Compromised' | 'Deceased' | string;
 }
 
 export interface NewsFlash {
-  source: string; 
+  source: string;
   headline: string;
 }
 
 export interface Choice {
   id: string;
   text: string;
-  type: 'diplomacy' | 'force' | 'profit' | 'innovation'; 
-  risk: 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME'; 
-  projectedCost?: string; 
-  detailedDescription: string; 
-  forecastRange: string; 
-  forecastConfidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'VOLATILE'; 
-  technicalReport: string; 
+  type: 'diplomacy' | 'force' | 'profit' | 'innovation';
+  risk: 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME';
+  projectedCost?: string;
+  detailedDescription: string;
+  forecastRange: string;
+  forecastConfidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'VOLATILE';
+  technicalReport: string;
 }
 
 export interface ExecutionAnalysis {
   directiveType: 'STANDARD' | 'CUSTOM';
   perceivedRisk: 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME';
-  forecastedRange: string; 
+  forecastedRange: string;
   forecastConfidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'VOLATILE';
   intelModifierValue: number; // The hidden shift applied to the matrix (e.g. +2 or -3)
-  outcomeCategory: 'VICTORY' | 'PARTIAL_SUCCESS' | 'PARTIAL_FAILURE' | 'CRITICAL_FAILURE'; 
-  outcomeLabel: string; 
+  outcomeCategory: 'VICTORY' | 'PARTIAL_SUCCESS' | 'PARTIAL_FAILURE' | 'CRITICAL_FAILURE';
+  outcomeLabel: string;
   resourcesConsumed: string;
   rollValue: string; // e.g. "14/20"
 }
@@ -111,7 +130,7 @@ export interface TurnData {
   turnNumber: number;
   year: string;
   eventTitle: string;
-  
+
   // The Physics Engine
   manifest: SimulationManifest;
   currentGoal: Goal; // NEW: The specific objective for this phase
@@ -119,15 +138,28 @@ export interface TurnData {
   arcs: PlotArc[];
 
   news: NewsFlash[];
-  narrative: string; 
+  narrative: string;
   advisors: Advisor[];
 
   stats: GameStats;
-  statsDelta: StatsDelta; 
-  statsReasoning: string; 
+  metricDisplays: MetricDisplay[];
+  statsDelta: StatsDelta;
+  statsReasoning: string;
+  detailedReport?: string;
+  pressCoverage?: Array<{ source: string; headline: string; body: string }>;
+  advisorReactions?: Array<{ actorId: string; name: string; reaction: string }>;
+  developments?: CausalDevelopment[];
+  storyThreads?: Array<{ id: string; title: string; status: string; summary: string }>;
+  /** What the world now puts in front of the player, in their own terms. */
+  facingPlayer?: string[];
+  /** Every branch the world weighed this turn, and which one the draw took. */
+  whatElseCouldHaveHappened?: {
+    draw: number;
+    outcomes: Array<{ id: string; event: string; probability: number; taken: boolean }>;
+  };
   ledger: WorldLedger;
   choices: Choice[];
-  executionAnalysis?: ExecutionAnalysis; 
+  executionAnalysis?: ExecutionAnalysis;
   gameOver: boolean;
 }
 
@@ -141,7 +173,7 @@ export interface HistoryEntry {
   statsReasoning: string;
   ledgerSnapshot: WorldLedger;
   manifestSnapshot: SimulationManifest; // Keep record of rules
-  goalSnapshot: Goal; 
+  goalSnapshot: Goal;
   goalResultSnapshot?: GoalResult; // NEW
   arcsSnapshot: PlotArc[];
   advisorsSnapshot: Advisor[]; // NEW: Track advisors to ensure continuity

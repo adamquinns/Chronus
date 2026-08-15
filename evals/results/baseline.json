@@ -1,0 +1,80 @@
+{
+  "generatedAt": "2026-08-14T20:21:40.033Z",
+  "baselineArchitecture": "Retired risk-table d20 resolver faithfully reproduced from git revision 22ae84a.",
+  "sameFixtures": {
+    "certain": {
+      "directive": "Allocate 1 reconnaissance sortie.",
+      "d20": {
+        "directive": "Allocate 1 reconnaissance sortie.",
+        "roll": 1,
+        "outcome": "CRITICAL_FAILURE",
+        "usesMechanismAnalysis": false,
+        "checksAuthority": false,
+        "checksCapabilities": false,
+        "isolatesHiddenState": false,
+        "deterministicWhenControlled": false
+      },
+      "causal": {
+        "outcome": "deterministic"
+      }
+    },
+    "impossible": {
+      "directive": "Order Khrushchev to surrender immediately.",
+      "d20": {
+        "directive": "Order Khrushchev to surrender immediately.",
+        "roll": 12,
+        "outcome": "VICTORY",
+        "usesMechanismAnalysis": false,
+        "checksAuthority": false,
+        "checksCapabilities": false,
+        "isolatesHiddenState": false,
+        "deterministicWhenControlled": false
+      },
+      "causal": {
+        "outcome": "no_feasible_effect"
+      }
+    }
+  },
+  "categories": [
+    {
+      "category": "Deterministic action integrity",
+      "baseline": 0,
+      "causal": 1
+    },
+    {
+      "category": "Impossible action integrity",
+      "baseline": 0,
+      "causal": 1
+    },
+    {
+      "category": "Hidden-information isolation",
+      "baseline": 0,
+      "causal": 1
+    },
+    {
+      "category": "Capability validation",
+      "baseline": 0,
+      "causal": 1
+    },
+    {
+      "category": "Causal provenance",
+      "baseline": 0,
+      "causal": 1
+    },
+    {
+      "category": "Exact committed-history reconstruction",
+      "baseline": 0,
+      "causal": 1
+    },
+    {
+      "category": "Residual-only randomness",
+      "baseline": 0,
+      "causal": 1
+    }
+  ],
+  "score": {
+    "baseline": 0,
+    "causal": 7,
+    "possible": 7
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "generatedAt": "2026-08-14T09:11:36.958Z",
+  "passed": true,
+  "scenarioId": "blackwater_bay_harborlight_crisis",
+  "errors": [],
+  "usage": {
+    "requests": 2,
+    "inputTokens": 4762,
+    "outputTokens": 9158,
+    "costUsd": 0.06986235
+  },
+  "traces": [
+    {
+      "role": "scenario_researcher",
+      "model": "anthropic/claude-sonnet-5",
+      "schemaName": "ScenarioResearch",
+      "status": "SUCCEEDED"
+    },
+    {
+      "role": "scenario_architect",
+      "model": "openai/gpt-5.6-terra",
+      "schemaName": "ScenarioDraft",
+      "status": "SUCCEEDED"
+    }
+  ]
+}

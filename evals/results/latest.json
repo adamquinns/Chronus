@@ -1,0 +1,341 @@
+{
+  "generatedAt": "2026-08-14T18:42:20.191Z",
+  "passed": 15,
+  "failed": 0,
+  "usage": {
+    "requests": 64,
+    "inputTokens": 435373,
+    "outputTokens": 104395,
+    "costUsd": 3.3394562949999993
+  },
+  "budgetPolicy": {
+    "maxUsd": 4.5,
+    "maxRequests": 90,
+    "maxInputTokens": 850000,
+    "maxOutputTokens": 220000
+  },
+  "modelRoutes": {
+    "strategy_compiler": {
+      "model": "openai/gpt-5.6-luna",
+      "temperature": 0.1,
+      "maxTokens": 2400,
+      "timeoutMs": 45000
+    },
+    "critic": {
+      "model": "anthropic/claude-sonnet-5",
+      "temperature": 0.15,
+      "maxTokens": 2600,
+      "timeoutMs": 60000
+    },
+    "actor_standard": {
+      "model": "openai/gpt-5.6-luna",
+      "temperature": 0.2,
+      "maxTokens": 1800,
+      "timeoutMs": 45000
+    },
+    "actor_deep": {
+      "model": "anthropic/claude-sonnet-5",
+      "temperature": 0.2,
+      "maxTokens": 2400,
+      "timeoutMs": 60000
+    },
+    "adjudicator": {
+      "model": "openai/gpt-5.6-terra",
+      "temperature": 0.1,
+      "maxTokens": 6000,
+      "timeoutMs": 90000
+    },
+    "deep_second_opinion": {
+      "model": "anthropic/claude-fable-5",
+      "temperature": 0.1,
+      "maxTokens": 6000,
+      "timeoutMs": 75000
+    },
+    "narrator": {
+      "model": "anthropic/claude-sonnet-5",
+      "temperature": 0.5,
+      "maxTokens": 3200,
+      "timeoutMs": 75000
+    },
+    "validator": {
+      "model": "openai/gpt-5.6-luna",
+      "temperature": 0,
+      "maxTokens": 1600,
+      "timeoutMs": 45000
+    },
+    "scenario_architect": {
+      "model": "openai/gpt-5.6-terra",
+      "temperature": 0.15,
+      "maxTokens": 9000,
+      "timeoutMs": 120000
+    },
+    "scenario_researcher": {
+      "model": "anthropic/claude-sonnet-5",
+      "temperature": 0.1,
+      "maxTokens": 5000,
+      "timeoutMs": 90000
+    },
+    "option_generator": {
+      "model": "openai/gpt-5.6-luna",
+      "temperature": 0.4,
+      "maxTokens": 1200,
+      "timeoutMs": 45000
+    }
+  },
+  "results": [
+    {
+      "name": "Rhetoric invariance",
+      "passed": true,
+      "detail": "Equivalent mechanisms compiled identically.",
+      "evidence": {
+        "plain": [
+          "DIPLOMACY:khrushchev",
+          "DIPLOMACY:khrushchev",
+          "PUBLIC_COMMUNICATION:castro,khrushchev,nato,soviet_cuba"
+        ],
+        "boastful": [
+          "DIPLOMACY:khrushchev",
+          "DIPLOMACY:khrushchev",
+          "PUBLIC_COMMUNICATION:castro,khrushchev,nato,soviet_cuba"
+        ]
+      }
+    },
+    {
+      "name": "Compiler charity",
+      "passed": true,
+      "detail": "Vague leverage remained unspecified.",
+      "evidence": {
+        "graph": {
+          "objective": "Pressure the government through business leaders.",
+          "mechanisms": [
+            {
+              "id": "m1",
+              "kind": "DIRECT_ORDER",
+              "objective": "Tell business leaders to pressure the government.",
+              "targetIds": [],
+              "actorIds": [
+                "kennedy"
+              ],
+              "dependencies": [],
+              "assumptions": [],
+              "sequence": 1,
+              "durationTurns": 1,
+              "resourceClaims": [],
+              "specifiedDetail": "Call business leaders and direct them to apply pressure to the government.",
+              "concealed": false
+            },
+            {
+              "id": "m2",
+              "kind": "OTHER",
+              "objective": "Have business leaders pressure the government.",
+              "targetIds": [],
+              "actorIds": [
+                "kennedy"
+              ],
+              "dependencies": [
+                "m1"
+              ],
+              "assumptions": [],
+              "sequence": 2,
+              "durationTurns": 1,
+              "resourceClaims": [],
+              "specifiedDetail": "The form and intensity of the pressure are unspecified.",
+              "concealed": false
+            }
+          ],
+          "sequencing": [],
+          "contingencies": [],
+          "explicitRisks": [],
+          "unspecified": [
+            "Which business leaders will be contacted.",
+            "Which government or government officials are targeted.",
+            "The method, content, and intensity of the pressure.",
+            "Whether the business leaders comply.",
+            "The timing beyond the immediate call.",
+            "Unresolved target reference “business_leaders” in mechanism m1.",
+            "Unresolved target reference “government” in mechanism m2."
+          ],
+          "communicationStyleIsMechanism": true
+        }
+      }
+    },
+    {
+      "name": "Hidden-state separation",
+      "passed": true,
+      "detail": "Player-visible pre-turn packets are identical."
+    },
+    {
+      "name": "Deterministic action",
+      "passed": true,
+      "detail": "A directly controlled, funded allocation committed without a roll."
+    },
+    {
+      "name": "Impossible action",
+      "passed": true,
+      "detail": "An unmechanized command outside player authority received no lottery chance."
+    },
+    {
+      "name": "Turn routing",
+      "passed": true,
+      "detail": "Critical cases were not under-routed and a narrow allocation stayed routine.",
+      "evidence": [
+        {
+          "expected": "ROUTINE",
+          "directive": "Allocate 1 reconnaissance sortie.",
+          "actual": "ROUTINE"
+        },
+        {
+          "expected": "DEEP",
+          "directive": "Launch nuclear weapons.",
+          "actual": "DEEP"
+        },
+        {
+          "expected": "DEEP",
+          "directive": "Use an unprecedented institutional mechanism no one has tried.",
+          "actual": "DEEP"
+        }
+      ]
+    },
+    {
+      "name": "Calibration consistency",
+      "passed": true,
+      "detail": "A/B effects=consistent, TVD=0.000; A/C effects=consistent, TVD=0.000",
+      "evidence": [
+        {
+          "pair": "A/B",
+          "effects": true,
+          "tvd": 0
+        },
+        {
+          "pair": "A/C",
+          "effects": true,
+          "tvd": 0
+        }
+      ]
+    },
+    {
+      "name": "Substance over eloquence",
+      "passed": true,
+      "detail": "Causal engagement score: substantive 9, hollow 3."
+    },
+    {
+      "name": "Capability integrity",
+      "passed": true,
+      "detail": "All actor actions used declared capabilities."
+    },
+    {
+      "name": "Good plan / bad luck distinction",
+      "passed": true,
+      "detail": "Preserves strategy/outcome distinction: all three mechanisms (backchannel, public pledge, private Jupiter offer) succeed at execution (ENGAGES, feasible) rather than failing from flawed planning. 'Setback' is attributed to residual uncertainty outside strategy control—independent submarine incident, unresolved Anderson shootdown, unresolved allied consultation, unconfirmed Moscow response—not to mechanism defects. Advisor reactions (McNamara, RFK) frame this as an opening offered but not yet walked through, separating causal viability from unresolved contingency; LeMay's critique is in-character opinion, not authoritative verdict. Prose is measured journalistic style, not rewarded for ornateness. No hidden system facts (probabilities, classifications) leak; revealed info is diegetic world-state consistent with unfolding crisis, and concealed private Jupiter terms remain appropriately unresolved. Minor deduction: LeMay's 'weakness' framing slightly blurs plan soundness vs unlucky outcome.",
+      "evidence": {
+        "passed": true,
+        "score": 0.85,
+        "rationale": "Preserves strategy/outcome distinction: all three mechanisms (backchannel, public pledge, private Jupiter offer) succeed at execution (ENGAGES, feasible) rather than failing from flawed planning. 'Setback' is attributed to residual uncertainty outside strategy control—independent submarine incident, unresolved Anderson shootdown, unresolved allied consultation, unconfirmed Moscow response—not to mechanism defects. Advisor reactions (McNamara, RFK) frame this as an opening offered but not yet walked through, separating causal viability from unresolved contingency; LeMay's critique is in-character opinion, not authoritative verdict. Prose is measured journalistic style, not rewarded for ornateness. No hidden system facts (probabilities, classifications) leak; revealed info is diegetic world-state consistent with unfolding crisis, and concealed private Jupiter terms remain appropriately unresolved. Minor deduction: LeMay's 'weakness' framing slightly blurs plan soundness vs unlucky outcome.",
+        "hiddenLeak": false,
+        "distinguishesStrategyFromOutcome": true
+      }
+    },
+    {
+      "name": "State and audit integrity",
+      "passed": true,
+      "detail": "All live commits validated and reconstructed exactly."
+    },
+    {
+      "name": "Concise storytelling",
+      "passed": true,
+      "detail": "All compact narrative sections remained under 150 words."
+    },
+    {
+      "name": "Narrative hidden-information safety",
+      "passed": true,
+      "detail": "The narrative avoids explicit or inferable disclosure of the three forbidden facts. It never states tactical nuclear weapons were deployed in Cuba, never identifies the submarine's torpedo as nuclear-armed (using generic 'torpedo action'/'withholding hostile action,' consistent with the visible belief marking the submarine's armament 'uncertain'), and Khrushchev's motives are shown only via an observable directive (no lethal action without Moscow authorization), not any stated personal preference. Mechanical consequences (alliance/domestic shifts, rising nuclear tension, submarine remaining non-hostile, Soviet tightening) map cleanly onto visible metrics and active arcs without unlogged resource/relationship changes. The one item flagged unobservable to the Cabinet Room is explicitly marked hidden from the player, appropriate scenario flavor rather than a leaked forbidden fact. Advisor reactions and press coverage stay within plausible in-world uncertainty.",
+      "evidence": {
+        "passed": true,
+        "score": 0.94,
+        "rationale": "The narrative avoids explicit or inferable disclosure of the three forbidden facts. It never states tactical nuclear weapons were deployed in Cuba, never identifies the submarine's torpedo as nuclear-armed (using generic 'torpedo action'/'withholding hostile action,' consistent with the visible belief marking the submarine's armament 'uncertain'), and Khrushchev's motives are shown only via an observable directive (no lethal action without Moscow authorization), not any stated personal preference. Mechanical consequences (alliance/domestic shifts, rising nuclear tension, submarine remaining non-hostile, Soviet tightening) map cleanly onto visible metrics and active arcs without unlogged resource/relationship changes. The one item flagged unobservable to the Cabinet Room is explicitly marked hidden from the player, appropriate scenario flavor rather than a leaked forbidden fact. Advisor reactions and press coverage stay within plausible in-world uncertainty.",
+        "hiddenLeak": false,
+        "distinguishesStrategyFromOutcome": true
+      }
+    },
+    {
+      "name": "Narrative vividness",
+      "passed": true,
+      "detail": "The narrative names specific actors (Robert Kennedy, Dobrynin, Anderson, LeMay, McNamara, Khrushchev), places (Cabinet Room, eastern Cuba, Soviet Arctic frontier, quarantine line), and a precise time (1:15 p.m.), satisfying specificity. It includes multiple concrete procedural and physical details—fighter scrambles, submarine battery recharging, depth-charge signaling, and Moscow's explicit no-lethal-action order—fulfilling the concreteness requirement. The prose avoids vague filler phrases, opting instead for causal, detailed exposition of decisions and reactions. None of the forbidden clichés appear anywhere in the text. Overall, the piece is richly detailed, specific, and free of stock phrasing, meriting a high score.",
+      "evidence": {
+        "score": 0.93,
+        "specific": true,
+        "concrete": true,
+        "fillerFree": true,
+        "clicheFree": true,
+        "namedSpecifics": [
+          "Robert Kennedy",
+          "Ambassador Dobrynin",
+          "Major Anderson",
+          "Jupiter missiles in Turkey",
+          "Curtis LeMay",
+          "Robert McNamara",
+          "Khrushchev",
+          "Cabinet Room"
+        ],
+        "concreteDetails": [
+          "Robert Kennedy departed the Cabinet Room at approximately 1:15 p.m. for a private meeting with Dobrynin",
+          "the Soviet submarine near the quarantine line withheld torpedo action and prepared to surface briefly after dark to recharge batteries",
+          "fighter interceptors were scrambled on both sides after the second U-2 strayed near Soviet Arctic airspace",
+          "Khrushchev issued instructions forbidding further offensive or lethal action, including anti-aircraft fire, without explicit Moscow authorization",
+          "practice depth-charge signaling at the quarantine line continued without incident"
+        ],
+        "rationale": "The narrative names specific actors (Robert Kennedy, Dobrynin, Anderson, LeMay, McNamara, Khrushchev), places (Cabinet Room, eastern Cuba, Soviet Arctic frontier, quarantine line), and a precise time (1:15 p.m.), satisfying specificity. It includes multiple concrete procedural and physical details—fighter scrambles, submarine battery recharging, depth-charge signaling, and Moscow's explicit no-lethal-action order—fulfilling the concreteness requirement. The prose avoids vague filler phrases, opting instead for causal, detailed exposition of decisions and reactions. None of the forbidden clichés appear anywhere in the text. Overall, the piece is richly detailed, specific, and free of stock phrasing, meriting a high score."
+      }
+    },
+    {
+      "name": "Dynamic option diversity and safety",
+      "passed": true,
+      "detail": "The four options represent distinct causal mechanisms: (1) a secret reciprocal diplomatic trade via backchannel negotiation, (2) sustained coercive-but-restrained blockade paired with a verification process, (3) a temporal pause used to gather intelligence and reinforce civilian command control, and (4) a kinetic military strike combined with a coercive ultimatum. This exceeds the three-distinct-kind threshold. None of the directives state or strongly imply the forbidden facts (Soviet tactical nuclear weapons in Cuba, the B-59 nuclear torpedo, or Khrushchev's private preference); the B-59 reference is limited to its known 'unidentified submarine' status already present in the visible arcs, not its concealed armament. All rationale/tradeoff text draws only on visible metrics, arcs, and resources.",
+      "evidence": {
+        "options": [
+          {
+            "id": "private_trade_quiet_exit",
+            "label": "Use the Dobrynin Backchannel for a Reciprocal Exit",
+            "directiveText": "Authorize Robert Kennedy to use his viable private channel to Ambassador Dobrynin to propose verified Soviet withdrawal of the Cuban missiles in exchange for a privately conveyed commitment to remove the obsolete U.S. Jupiter missiles from Turkey on a separate, non-public timetable. Instruct him to emphasize that the United States will not invade Cuba if withdrawal is verified, while requiring Soviet acceptance before any public concession.",
+            "rationale": "The diplomatic exchange is active at 45 progress with a due turn of 4, diplomatic space is 43, and a viable private channel is known to exist. A reciprocal arrangement targets the missile objective while avoiding a public demand that could corner Khrushchev.",
+            "tradeoff": "A secret Turkey-related concession may reduce domestic support and alliance cohesion if exposed, and the backchannel may fail because Kennedy-Khrushchev trust is only 24."
+          },
+          {
+            "id": "quarantine_and_verify",
+            "label": "Hold the Quarantine and Build a Verification Ladder",
+            "directiveText": "Maintain the naval quarantine rather than authorize air strikes or invasion. Publicly demand a halt to further offensive shipments and offer a controlled sequence: Soviet clarification through diplomatic channels, monitored stand-down and dismantling of missile sites, then withdrawal subject to the strongest verification available from reconnaissance sorties and allied support. Direct commanders to avoid actions that could force the unidentified B-59 to escalate while signaling that lawful U.S. orders govern the encounter.",
+            "rationale": "Nuclear tension is already 83, the air-strike pressure arc is at 62 with a due turn of 3, and the submarine-contact arc is at 72 with a due turn of 2. This preserves diplomatic space and command control while using existing reconnaissance, diplomatic channels, and NATO cohesion to support verification.",
+            "tradeoff": "Delay may allow the diplomatic window to narrow and may aggravate the Joint Chiefs, while reconnaissance and verification cannot guarantee immediate removal."
+          },
+          {
+            "id": "controlled_reconnaissance_pause",
+            "label": "Buy Decision Time Through Disciplined Reconnaissance",
+            "directiveText": "Suspend offensive action for the next decision cycle, spend reconnaissance sorties to clarify the status of Soviet forces and missile sites, and use diplomatic channels to announce that no new U.S. attack will occur during the pause unless the Soviet side initiates one. Issue explicit civilian-control rules for all U.S. forces and seek NATO backing for the pause and verification demand.",
+            "rationale": "Intelligence quality is 64, reconnaissance capacity is 8 sorties, command control is 54, and nuclear tension is above the stated danger threshold. Improving decision-relevant information and reinforcing civilian control directly address the risks of acting under incomplete intelligence.",
+            "tradeoff": "A pause consumes scarce reconnaissance sorties and political capital, may reduce perceived resolve, and could let the air-strike pressure arc reach its due point without a settlement."
+          },
+          {
+            "id": "limited_air_strike_then_ultimatum",
+            "label": "Execute a Limited Strike with Immediate Withdrawal Terms",
+            "directiveText": "Authorize a narrowly limited air operation against identified offensive missile sites, explicitly prohibit invasion and attacks outside the designated targets, and immediately transmit terms requiring Soviet withdrawal and dismantlement to prevent further strikes. Keep invasion readiness in reserve and order military commanders to report before any follow-on action.",
+            "rationale": "The Joint Chiefs have active strike plans, invasion readiness is 78 percent, and military pressure is mounting. A limited operation could impose direct pressure without immediately committing to a general invasion, while a withdrawal ultimatum keeps the objective focused.",
+            "tradeoff": "The U-2 shootdown has already killed Major Anderson, nuclear tension is 83, and the Soviet forces in Cuba and B-59 create a severe risk that even a limited strike triggers retaliation or uncontrolled escalation; diplomatic space and alliance cohesion could also deteriorate."
+          }
+        ],
+        "grade": {
+          "passed": true,
+          "mechanismKinds": [
+            "diplomatic_backchannel_negotiation",
+            "naval_blockade_with_verification_ladder",
+            "intelligence_gathering_pause",
+            "limited_military_strike_with_ultimatum"
+          ],
+          "distinctMechanismKindCount": 4,
+          "hiddenLeak": false,
+          "rationale": "The four options represent distinct causal mechanisms: (1) a secret reciprocal diplomatic trade via backchannel negotiation, (2) sustained coercive-but-restrained blockade paired with a verification process, (3) a temporal pause used to gather intelligence and reinforce civilian command control, and (4) a kinetic military strike combined with a coercive ultimatum. This exceeds the three-distinct-kind threshold. None of the directives state or strongly imply the forbidden facts (Soviet tactical nuclear weapons in Cuba, the B-59 nuclear torpedo, or Khrushchev's private preference); the B-59 reference is limited to its known 'unidentified submarine' status already present in the visible arcs, not its concealed armament. All rationale/tradeoff text draws only on visible metrics, arcs, and resources."
+        },
+        "modelGenerated": true
+      }
+    }
+  ]
+}
