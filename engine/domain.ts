@@ -58,7 +58,12 @@ export interface ExecutableHardRule {
   actorIds?: Id[];
   targetIds?: Id[];
   conditions?: GoalCondition[];
-  effect: 'PROHIBIT' | 'REQUIRE_RESOURCE' | 'REQUIRE_CAPABILITY' | 'DELAY';
+  /**
+   * PROHIBIT — the act itself cannot be performed.
+   * DENY_AUTHORITY — the act can be performed, but it compels nothing: the
+   *   other party decides. Most "X has no authority over Y" rules mean this.
+   */
+  effect: 'PROHIBIT' | 'DENY_AUTHORITY' | 'REQUIRE_RESOURCE' | 'REQUIRE_CAPABILITY' | 'DELAY';
   resourceId?: Id;
   resourceAmount?: number;
   capabilityPattern?: string;
@@ -409,6 +414,9 @@ export interface WorldExtensionProposal {
   aliases: GroundedAlias[];
   sourceRefs: string[];
   confidence: Confidence;
+  /** Ids among the proposed entities that are the player's own instruments or
+   * subordinate institutions, and which the player may therefore direct. */
+  playerControls?: Id[];
 }
 
 export interface WorldExtensionAudit {
@@ -427,6 +435,8 @@ export interface GroundingFixture {
   entity?: EntityState;
   relationships?: RelationshipState[];
   facts?: WorldFact[];
+  /** The player's own instrument or subordinate body, which they may direct. */
+  playerControlled?: boolean;
 }
 
 /** Thrown before ANY state, RNG, actor, or resource advance: the directive

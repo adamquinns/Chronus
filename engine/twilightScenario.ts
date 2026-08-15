@@ -127,7 +127,7 @@ export const createTwilightCampaign = (seed = 20251105): Campaign => {
     artifactFormats: ['AP national wire', 'state attorney general memorandum', 'county election-security bulletin', 'coalition organizer report', 'federal court filing', 'administration-aligned cable segment'],
   };
   campaign.state.manifest.executableHardRules = [
-    { id: 'no_direct_orders', description: 'The coalition has no direct authority over governors, courts, unions, election officials, or federal agencies.', appliesTo: 'PLAYER', mechanismKinds: ['DIRECT_ORDER'], targetIds: ['blue_governors', 'civil_rights', 'labor', 'election_officials', 'federal_courts', 'white_house', 'federal_enforcement'], effect: 'PROHIBIT' },
+    { id: 'no_direct_orders', description: 'The coalition has no direct authority over governors, courts, unions, election officials, or federal agencies.', appliesTo: 'PLAYER', mechanismKinds: ['DIRECT_ORDER'], targetIds: ['blue_governors', 'civil_rights', 'labor', 'election_officials', 'federal_courts', 'white_house', 'federal_enforcement'], effect: 'DENY_AUTHORITY' },
     { id: 'legal_capacity', description: 'Legal action requires at least one coordinated legal team.', appliesTo: 'PLAYER', mechanismKinds: ['LEGAL_ACTION'], effect: 'REQUIRE_RESOURCE', resourceId: 'legal_teams', resourceAmount: 1 },
     { id: 'secure_private_coordination', description: 'Private coalition coordination requires an available secure channel.', appliesTo: 'PLAYER', mechanismKinds: ['DECEPTION', 'COALITION_BUILDING'], effect: 'REQUIRE_RESOURCE', resourceId: 'secure_channels', resourceAmount: 1 },
   ];

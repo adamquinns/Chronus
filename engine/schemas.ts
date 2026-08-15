@@ -82,6 +82,7 @@ export const worldExtensionSchema = z.object({
   aliases: z.array(z.object({ alias: z.string().max(80), targetId: z.string(), confidence })).max(8),
   sourceRefs: z.array(z.string().max(200)).max(6).default([]),
   confidence,
+  playerControls: z.array(z.string()).max(2).default([]),
 });
 
 export const fidelitySchema = z.object({

@@ -111,7 +111,7 @@ export const createCubanCampaign = (seed = 19621027): Campaign => {
     executableHardRules: [
       { id: 'cmc_recon_capacity', description: 'Reconnaissance tasking requires an available reconnaissance sortie.', appliesTo: 'PLAYER', mechanismKinds: ['INTELLIGENCE'], effect: 'REQUIRE_RESOURCE', resourceId: 'recon_sorties', resourceAmount: 1 },
       { id: 'cmc_command_control', description: 'US military operations cannot be initiated after civilian command-and-control has collapsed.', appliesTo: 'PLAYER', mechanismKinds: ['MILITARY_OPERATION'], conditions: [{ targetType: 'METRIC', targetId: 'command_control', field: 'value', operator: 'LT', value: 30 }], effect: 'PROHIBIT' },
-      { id: 'cmc_soviet_withdrawal', description: 'The United States cannot directly order Soviet missile withdrawal.', appliesTo: 'PLAYER', mechanismKinds: ['DIRECT_ORDER'], targetIds: ['khrushchev', 'soviet_cuba'], effect: 'PROHIBIT' },
+      { id: 'cmc_soviet_withdrawal', description: 'The United States cannot compel Soviet missile withdrawal by order; it can only demand it.', appliesTo: 'PLAYER', mechanismKinds: ['DIRECT_ORDER'], targetIds: ['khrushchev', 'soviet_cuba'], effect: 'DENY_AUTHORITY' },
     ],
   };
 

@@ -47,24 +47,56 @@ export const inferMechanismKind = (text: string): StrategyMechanism['kind'] => {
   return 'OTHER';
 };
 
+/** Acts that create contact where none existed. */
+const REACHES_OUT = /\b(?:fly|flying|flight|travel|go to|going to|visit|meet|meeting|envoy|emissary|delegation|approach|reach out|send word|broadcast|appeal|announce)\b/i;
+
 const word = (haystack: string, needle: string) =>
   new RegExp(`\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(haystack);
 
-const referencedIds = (text: string, state: WorldState) => Object.values(state.entities)
-  .filter((entity) => {
-    const lower = text.toLowerCase();
-    if (entity.id === state.manifest.playerId && /\brobert kennedy\b/i.test(text) && !/\bjohn(?: f\.)? kennedy\b|\bpresident kennedy\b/i.test(text)) return false;
-    const name = entity.name.toLowerCase();
-    if (word(lower, name) || word(lower, entity.id.replaceAll('_', ' '))) return true;
-    // A trailing token identifies a PERSON (surname convention) but not an
-    // institution: the last word of "Soviet Group of Forces in Cuba" is a
-    // place and of "NATO Allies" is a generic noun. Matching those turns any
-    // mention of a destination or of "allies" into a targeted actor.
-    if (entity.kind !== 'PERSON') return false;
-    const surname = name.split(' ').at(-1)!;
-    return surname.length > 3 && word(lower, surname);
-  })
-  .map((entity) => entity.id);
+/** "Take me to Cuba" names a destination, not a party whose behaviour is being
+ * acted upon. Matching a place to the force stationed there turns travel into
+ * an order aimed at that force. */
+const namedAsDestination = (text: string, entity: { name: string; id: string }) => {
+  const tokens = [entity.name, entity.id.replaceAll('_', ' ')]
+    .flatMap((value) => value.toLowerCase().split(' '))
+    .filter((token) => token.length > 3);
+  return tokens.some((token) => new RegExp(`\\b(?:to|toward|towards|into|for|in|over|via|from|at)\\s+(?:the\\s+)?${token}\\b`, 'i').test(text))
+    && !new RegExp(`\\b(?:order|tell|ask|demand|command|instruct|negotiate|with|meet)\\s+(?:the\\s+)?[^.;]{0,20}${tokens[0]}`, 'i').test(text);
+};
+
+const STOP_TOKENS = new Set(['the', 'of', 'and', 'for', 'in', 'group', 'forces', 'staff', 'network', 'allies', 'bloc', 'state', 'states', 'united', 'national', 'federal', 'chief', 'chiefs']);
+
+/** A single word identifies an entity when it belongs to that entity alone in
+ * this scenario. "Governors" picks out the governors' network; "Allies" and
+ * "Forces" do not pick out anything, and a place name is handled separately by
+ * the destination guard. */
+const nameTokens = (name: string) => name.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+
+const distinctiveTokens = (state: WorldState) => {
+  const counts = new Map<string, number>();
+  for (const entity of Object.values(state.entities)) {
+    for (const token of new Set(nameTokens(entity.name))) {
+      if (token.length <= 3 || STOP_TOKENS.has(token)) continue;
+      counts.set(token, (counts.get(token) ?? 0) + 1);
+    }
+  }
+  return counts;
+};
+
+const referencedIds = (text: string, state: WorldState) => {
+  const counts = distinctiveTokens(state);
+  return Object.values(state.entities)
+    .filter((entity) => {
+      const lower = text.toLowerCase();
+      if (entity.id === state.manifest.playerId && /\brobert kennedy\b/i.test(text) && !/\bjohn(?: f\.)? kennedy\b|\bpresident kennedy\b/i.test(text)) return false;
+      const name = entity.name.toLowerCase();
+      if (namedAsDestination(lower, entity)) return false;
+      if (word(lower, name) || word(lower, entity.id.replaceAll('_', ' '))) return true;
+      return nameTokens(name).some((token) =>
+        counts.get(token) === 1 && word(lower, token));
+    })
+    .map((entity) => entity.id);
+};
 
 const resourceClaims = (text: string, state: WorldState) => {
   const amount = Number(text.match(/\b(\d+(?:\.\d+)?)\b/)?.[1]);
@@ -88,11 +120,17 @@ const ATTEMPT_LEAD = /^(?:i|we|i'm|i am|i'll|i will|my|our|let's|have|order|ask|
 /** Verbs that declare another actor's behavior or an outcome as already decided. */
 const EXTERNAL_EVENT = /\b(?:freaks?(?:\s+out)?|panics?|agrees?|complies|resigns?|surrenders?|defects?|approves?|endorses?|withdraws?|backs?\s+down|capitulates?|flees|flies|travels|departs|arrives|celebrates?|decides?|chooses?|refuses?|steps?\s+down|will\s+(?:be|resign|comply|agree|approve|surrender|withdraw|endorse|step\s+down)|is\s+(?:resigning|complying|agreeing|surrendering|withdrawing))\b/i;
 
+/** Modal and conditional framing — "can resign", "should stand down", "anyone
+ * who tries ... will be replaced" — is the player stating terms, which is an
+ * act they perform. Only a declarative claim that another party HAS acted, or
+ * definitely will, is an assertion the simulation must refuse. */
+const CONDITIONAL_OR_MODAL = /\b(?:can|could|may|might|should|must|shall|if|unless|whoever|anyone who|those who|or else)\b/i;
+
 export const classifyClause = (clause: string): 'ATTEMPT' | 'ASSERTED_EXTERNAL' | 'RATIONALE' => {
   const trimmed = clause.trim();
   if (/^because\b/i.test(trimmed)) return 'RATIONALE';
   if (ATTEMPT_LEAD.test(trimmed)) return 'ATTEMPT';
-  if (EXTERNAL_EVENT.test(trimmed)) return 'ASSERTED_EXTERNAL';
+  if (EXTERNAL_EVENT.test(trimmed) && !CONDITIONAL_OR_MODAL.test(trimmed)) return 'ASSERTED_EXTERNAL';
   return 'ATTEMPT';
 };
 
@@ -213,7 +251,7 @@ export const compileStrategy = async (
     const result = await gateway.callJson('strategy_compiler', [
       {
         role: 'system',
-        content: 'You are a literal strategy compiler. Decompose the directive into: mechanisms — ONLY actions the player can personally attempt or order (call, ask, demand, prepare, allocate, announce); requestedOutcomes — desired results that depend on another actor or on feasibility (a resignation obtained, an agreement reached); assertedExternalEvents — text that declares another actor’s behavior, emotion, or an outcome as already decided (never convert these into mechanisms or targets); rationale — the player’s stated theory of leverage; unresolvedReferences — people, offices, or institutions relevant to an attempt but absent from the permittedContext entity list. Extract only what is supplied or reasonably implied. Do not praise, repair, optimize, or invent leverage. Preserve vague mechanisms as vague and list missing details under unspecified.',
+        content: 'You are a literal strategy compiler. targetIds are ONLY the actors whose decisions or behaviour a mechanism acts upon. A place named as a destination, origin, or route is NEVER a target — travelling to a country does not target the forces stationed there. An asset the player uses (their aircraft, their staff) is an instrument, not a target. Decompose the directive into: mechanisms — ONLY actions the player can personally attempt or order (call, ask, demand, prepare, allocate, announce); requestedOutcomes — desired results that depend on another actor or on feasibility (a resignation obtained, an agreement reached); assertedExternalEvents — text that declares another actor’s behavior, emotion, or an outcome as already decided (never convert these into mechanisms or targets); rationale — the player’s stated theory of leverage; unresolvedReferences — people, offices, or institutions relevant to an attempt but absent from the permittedContext entity list. Extract only what is supplied or reasonably implied. Do not praise, repair, optimize, or invent leverage. Preserve vague mechanisms as vague and list missing details under unspecified.',
       },
       {
         role: 'user',
@@ -299,12 +337,13 @@ export const classifyTurnDepth = (graph: StrategyGraph, state: WorldState): Turn
 export const checkFeasibility = (graph: StrategyGraph, state: WorldState): FeasibilityFinding[] => {
   const playerId = state.manifest.playerId;
   const controlled = new Set(Object.values(state.entities).filter((entity) => entity.id === playerId || entity.controllerId === playerId).map((entity) => entity.id));
+  // Specialised capabilities only. Speaking publicly, meeting, and making a
+  // demand are baseline acts of being an actor — a head of state does not
+  // need a declared "public communication" capability to address the nation.
   const capabilityPatterns: Partial<Record<StrategyMechanism['kind'], RegExp>> = {
     MILITARY_OPERATION: /military|strike|invasion|naval|force|troop|air|strategic|weapon/i,
     INTELLIGENCE: /intelligence|recon|surveil|collection|investigat|audit|spy/i,
-    DIPLOMACY: /diplom|channel|backchannel|correspondence|negotiat/i,
     LEGAL_ACTION: /legal|law|court|injunction|treaty/i,
-    PUBLIC_COMMUNICATION: /public|press|speech|broadcast|media/i,
   };
   return graph.mechanisms.map((mechanism) => {
     const reasons: string[] = [];
@@ -382,10 +421,11 @@ export const checkFeasibility = (graph: StrategyGraph, state: WorldState): Feasi
       reasons.push(`No authority compels ${uncommandableTargets.join(', ')}; the order lands as a demand and compliance is theirs to decide.`);
     }
     if (mechanism.kind === 'DIRECT_ORDER' && mechanism.targetIds.length === 0) {
-      feasible = false;
-      unmechanizedControlRequest = true;
-      availableFraction = 0;
-      constraints.push('No authoritative target was identified for the direct order.');
+      // An order that names no other party is addressed to the player's own
+      // establishment — their staff, their transport, their department. A head
+      // of government commanding their own apparatus is the clearest case of
+      // authority there is; it is not an order into the void.
+      reasons.push('Addressed to the player’s own establishment; no external party is being commanded.');
     }
     if (matchingRules.some((rule) => rule.conditions.length)) {
       reasons.push(...matchingRules.flatMap((rule) => rule.conditions.map((condition) => `Authority condition: ${condition}.`)));
@@ -401,6 +441,9 @@ export const checkFeasibility = (graph: StrategyGraph, state: WorldState): Feasi
         feasible = false;
         availableFraction = 0;
         constraints.push(rule.description);
+      } else if (rule.effect === 'DENY_AUTHORITY') {
+        lacksCompulsion = true;
+        reasons.push(`${rule.description} The attempt still lands; compliance is not the player's to command.`);
       } else if (rule.effect === 'REQUIRE_RESOURCE' && rule.resourceId) {
         const resource = state.resources[rule.resourceId];
         if (!resource || resource.amount < (rule.resourceAmount ?? 1)) {
@@ -424,9 +467,20 @@ export const checkFeasibility = (graph: StrategyGraph, state: WorldState): Feasi
       relationship.communication && ((relationship.fromId === playerId && relationship.toId === targetId) || (relationship.toId === playerId && relationship.fromId === targetId)));
     if ((mechanism.kind === 'DIPLOMACY' || mechanism.kind === 'DIRECT_ORDER' || mechanism.kind === 'COERCION') && mechanism.targetIds.length) {
       if (!mechanism.targetIds.some(channelTo)) {
-        feasible = false;
-        availableFraction = 0;
-        constraints.push('No available communication channel to the specified target.');
+        // Going to someone in person, sending an envoy, or appealing publicly
+        // is precisely how contact gets made with a party you have no channel
+        // to. Blocking that for want of a prior channel is circular.
+        const reachesOut = graph.mechanisms.some((other) =>
+          (other.targetIds.some((id) => mechanism.targetIds.includes(id)) || other.kind === 'PUBLIC_COMMUNICATION')
+          && (REACHES_OUT.test(other.specifiedDetail) || other.kind === 'PUBLIC_COMMUNICATION'));
+        if (reachesOut) {
+          classification = 'DELAYED';
+          reasons.push('No standing channel exists; contact must first be established by the approach in this package.');
+        } else {
+          feasible = false;
+          availableFraction = 0;
+          constraints.push('No available communication channel to the specified target, and nothing in this directive establishes one.');
+        }
       }
     }
     // Informal power: where no formal rule grants control, leverage/trust with

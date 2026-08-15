@@ -1,5 +1,6 @@
 import {
   ArcState,
+  StrategyMechanism,
   EntityState,
   GroundedAlias,
   Id,
@@ -212,6 +213,15 @@ export const validateWorldExtension = (
     }];
   });
 
+  repaired.playerControls = (repaired.playerControls ?? []).filter((id) => {
+    const entity = repaired.entities.find((candidate) => candidate.id === id);
+    if (!entity) return false;
+    if (entity.kind === 'STATE') {
+      issues.push({ code: 'WX_PLAYER_CONTROL_REJECTED', severity: 'WARNING', message: `${id} is a sovereign actor; the player was not granted authority over it.` });
+      return false;
+    }
+    return true;
+  });
   repaired.aliases = repaired.aliases.filter((alias) => {
     if (availableIds.has(alias.targetId)) return true;
     issues.push({ code: 'WX_ALIAS_TARGET', severity: 'ERROR', message: `Alias "${alias.alias}" points at unknown ${alias.targetId}.` });
@@ -241,6 +251,7 @@ export const applyWorldExtension = (
     impactClass: 'NONE',
     confidence: proposal.confidence,
   });
+  const ALL_KINDS: StrategyMechanism['kind'][] = ['DIRECT_ORDER', 'DIPLOMACY', 'COERCION', 'ECONOMIC_PRESSURE', 'MILITARY_OPERATION', 'INTELLIGENCE', 'DECEPTION', 'LEGAL_ACTION', 'PUBLIC_COMMUNICATION', 'COALITION_BUILDING', 'RESOURCE_TRANSFER', 'OTHER'];
   for (const entity of proposal.entities) {
     next.entities[entity.id] = structuredClone(entity);
     record('ENTITY', entity.id, entity);
@@ -249,10 +260,27 @@ export const applyWorldExtension = (
     next.manifest.authorityRules.push({
       actorId: entity.id,
       targetId: entity.id,
-      mechanismKinds: ['DIRECT_ORDER', 'DIPLOMACY', 'COERCION', 'ECONOMIC_PRESSURE', 'MILITARY_OPERATION', 'INTELLIGENCE', 'DECEPTION', 'LEGAL_ACTION', 'PUBLIC_COMMUNICATION', 'COALITION_BUILDING', 'RESOURCE_TRANSFER', 'OTHER'],
+      mechanismKinds: ALL_KINDS,
       mode: 'DIRECT',
       conditions: [],
     });
+    // An object materialized because the player reached for it may be the
+    // player's OWN instrument — their aircraft, their staff, their department.
+    // Born with no authority rule, it would be un-orderable by the very person
+    // who invoked it, which is how "fly me there on my own plane" becomes
+    // impossible. Assets answer directly; the player's own institutions answer
+    // as delegated bodies that may still argue back.
+    const playerControlled = proposal.playerControls?.includes(entity.id);
+    if (playerControlled) {
+      next.manifest.authorityRules.push({
+        actorId: state.manifest.playerId,
+        targetId: entity.id,
+        mechanismKinds: ALL_KINDS,
+        mode: entity.kind === 'ASSET' ? 'DIRECT' : 'DELEGATED',
+        conditions: [],
+      });
+      next.entities[entity.id].controllerId ??= state.manifest.playerId;
+    }
   }
   for (const relationship of proposal.relationships) {
     next.relationships[relationship.id] = structuredClone(relationship);
@@ -294,6 +322,7 @@ const fixtureProposal = (
     proposal.aliases.push({ alias: normalized, targetId, confidence: 'VERY_HIGH' });
     if (fixture.entity && !state.entities[fixture.entity.id] && !proposal.entities.some((entity) => entity.id === fixture.entity!.id)) {
       proposal.entities.push(structuredClone(fixture.entity));
+      if (fixture.playerControlled) (proposal.playerControls ??= []).push(fixture.entity.id);
       for (const relationship of fixture.relationships ?? []) proposal.relationships.push(structuredClone(relationship));
       for (const fact of fixture.facts ?? []) proposal.facts.push(structuredClone(fact));
     }
@@ -370,7 +399,7 @@ const modelProposal = async (
   const result = await gateway.callJson('world_grounder', [
     {
       role: 'system',
-      content: 'You ground references for a historical simulation. Propose the MINIMUM period-accurate world objects needed for the listed unresolved references at the scenario cutoff date: the correct real officeholder or institution where identifiable, with realistic capabilities bounded to the actual role. Omit references that are implausible or anachronistic for the period and explain the omission in rationale. Never duplicate existingEntities — return an alias instead. Use snake_case ids. Label provenance honestly: VERIFIED_FACT only with a citable source in sourceRefs, otherwise WELL_SUPPORTED_INFERENCE or SCENARIO_ABSTRACTION.',
+      content: 'You ground references for a historical simulation. Set playerControls to the ids of any proposed object that is the PLAYER\u2019S OWN instrument or subordinate body — their aircraft, their staff, their department, their cabinet — so the player can direct it. Never list a foreign power, an independent institution, or another leader there. Propose the MINIMUM period-accurate world objects needed for the listed unresolved references at the scenario cutoff date: the correct real officeholder or institution where identifiable, with realistic capabilities bounded to the actual role. Omit references that are implausible or anachronistic for the period and explain the omission in rationale. Never duplicate existingEntities — return an alias instead. Use snake_case ids. Label provenance honestly: VERIFIED_FACT only with a citable source in sourceRefs, otherwise WELL_SUPPORTED_INFERENCE or SCENARIO_ABSTRACTION.',
     },
     {
       role: 'user',
@@ -423,6 +452,7 @@ const modelProposal = async (
     aliases: wire.aliases,
     sourceRefs: wire.sourceRefs ?? [],
     confidence: wire.confidence,
+    playerControls: (wire.playerControls ?? []).filter((id) => wire.entities.some((entity) => entity.id === id)),
   };
 };
 

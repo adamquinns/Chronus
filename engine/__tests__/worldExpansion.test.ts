@@ -7,7 +7,7 @@ import { runTurn } from '../pipeline';
 import { reconstructCommittedTurn } from '../audit';
 import { exportCampaign, importCampaign } from '../persistence';
 import { visibleFactIds, visibility } from '../visibility';
-import { validateWorldExtension } from '../worldExpansion';
+import { applyWorldExtension, validateWorldExtension } from '../worldExpansion';
 import { validateAdjudicationProposal } from '../validation';
 
 const LIVE_DIRECTIVE_1 = 'I am publically and privately asking my VP LBJ to resign ASAP so I can appoint a new VP RFK.';
@@ -114,9 +114,9 @@ describe('dynamic actors are full, non-omniscient citizens', () => {
     const hybrid = await runTurn(createCubanCampaign(52), LIVE_DIRECTIVE_2, { persist: false });
     expect(hybrid.audit.narrativePacket?.outcomeLedger.setAside.length).toBeGreaterThanOrEqual(2);
     expect(hybrid.audit.narrative.strategicConsequences).toMatch(/set aside|not player-controlled|blocked/i);
-    // A genuinely blocked act: a scenario hard rule forbids ordering Soviet
-    // withdrawal, so the ACT itself cannot be performed.
-    const blocked = await runTurn(createCubanCampaign(53), 'Order Khrushchev to withdraw the missiles from Cuba immediately.', { persist: false });
+    // A genuinely blocked act: no controlled force has the capability, so the
+    // act itself cannot be performed.
+    const blocked = await runTurn(createCubanCampaign(53), 'Launch a carrier air wing strike on the SAM site.', { persist: false });
     expect(blocked.audit.narrativePacket?.outcomeLedger.blocked.length).toBeGreaterThanOrEqual(1);
   });
 });
@@ -310,5 +310,82 @@ describe('causal-path rule for the escalation metric', () => {
       recommendedEffects: [{ ...effect, dependencies: ['khrushchev'] }],
     }, graph, feasibility, state, []);
     expect(grounded.some((issue) => issue.code === 'EFFECT_UNSUPPORTED_ESCALATION')).toBe(false);
+  });
+});
+
+describe('the engine must not mangle a clear directive', () => {
+  const state = () => createCubanCampaign(19621027).state;
+
+  it('treats a place named as a destination as a destination, not as the force stationed there', () => {
+    const graph = compileDeterministically('Take me directly to Cuba via Air Force One right now.', state());
+    expect(graph.mechanisms[0].targetIds).not.toContain('soviet_cuba');
+    // Naming the same party as a party still targets them.
+    const addressed = compileDeterministically('Order the Soviet Group of Forces in Cuba to stand down.', state());
+    expect(addressed.mechanisms[0].targetIds).toContain('soviet_cuba');
+  });
+
+  it('lets the player command their own establishment without naming an outside party', () => {
+    const graph = compileDeterministically('Take me directly to Cuba via Air Force One right now.', state());
+    const finding = checkFeasibility(graph, state())[0];
+    expect(finding.executable).toBe(true);
+    expect(finding.classification).not.toBe('IMPOSSIBLE');
+    expect(finding.controlMode).toBe('DIRECT');
+  });
+
+  it('does not require a declared capability in order to speak or to meet', () => {
+    const speak = compileDeterministically('Announce publicly that the quarantine line holds.', state());
+    expect(speak.mechanisms[0].kind).toBe('PUBLIC_COMMUNICATION');
+    expect(checkFeasibility(speak, state())[0].executable).toBe(true);
+  });
+
+  it('does not block reaching someone for want of the contact the approach would create', () => {
+    const withApproach = compileDeterministically('Fly to Havana and meet Castro directly.', state());
+    const findings = checkFeasibility(withApproach, state());
+    expect(findings.every((finding) => finding.classification !== 'IMPOSSIBLE')).toBe(true);
+    // With no approach at all, an unreachable party stays unreachable.
+    const bare = compileDeterministically('Negotiate with Castro.', state());
+    expect(checkFeasibility(bare, state())[0].classification).toBe('IMPOSSIBLE');
+  });
+
+  it('reads a conditional ultimatum as the player stating terms, not as a world event', () => {
+    const graph = compileDeterministically('Any cabinet member who tries to stop me can resign.', state());
+    expect(graph.assertedExternalEvents).toEqual([]);
+    expect(graph.mechanisms).toHaveLength(1);
+    // A flat declaration that someone HAS acted is still refused.
+    const asserted = compileDeterministically('The Secretary of Defense resigns in protest.', state());
+    expect(asserted.assertedExternalEvents.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('gives the player authority over an instrument materialized on their behalf', () => {
+    const base = state();
+    const applied = applyWorldExtension(base, {
+      rationale: 'test',
+      entities: [{
+        id: 'sam_26000', name: 'SAM 26000', kind: 'ASSET', description: 'Presidential aircraft.',
+        objectives: ['Carry the president'], capabilities: ['Presidential air transport'], constraints: [],
+        status: 'ACTIVE', power: 20, resolve: 50, privateFacts: [], visibility: visibility('PUBLIC'), fieldVisibility: {},
+      }],
+      relationships: [], facts: [], arcs: [], aliases: [], sourceRefs: [], confidence: 'HIGH',
+      playerControls: ['sam_26000'],
+    });
+    const rule = applied.state.manifest.authorityRules.find((candidate) =>
+      candidate.actorId === 'kennedy' && candidate.targetId === 'sam_26000');
+    expect(rule?.mode).toBe('DIRECT');
+    expect(applied.state.entities.sam_26000.controllerId).toBe('kennedy');
+  });
+
+  it('refuses to hand the player command of a sovereign actor', () => {
+    const { proposal, issues } = validateWorldExtension({
+      rationale: 'test',
+      entities: [{
+        id: 'some_state', name: 'A Foreign State', kind: 'STATE', description: 'A sovereign power.',
+        objectives: ['Survive'], capabilities: ['National government'], constraints: [],
+        status: 'ACTIVE', power: 60, resolve: 60, privateFacts: [], visibility: visibility('PUBLIC'), fieldVisibility: {},
+      }],
+      relationships: [], facts: [], arcs: [], aliases: [], sourceRefs: [], confidence: 'HIGH',
+      playerControls: ['some_state'],
+    }, state());
+    expect(proposal.playerControls).toEqual([]);
+    expect(issues.some((issue) => issue.code === 'WX_PLAYER_CONTROL_REJECTED')).toBe(true);
   });
 });

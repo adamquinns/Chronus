@@ -65,7 +65,12 @@ describe('completion invariants', () => {
     const twilight = createTwilightCampaign(303);
     twilight.state.resources.legal_teams.amount = 0;
     expect(checkFeasibility(compileDeterministically('File an injunction in federal court.', twilight.state), twilight.state)[0].classification).toBe('IMPOSSIBLE');
-    expect(checkFeasibility(compileDeterministically('Order the governors to refuse the federal demand.', twilight.state), twilight.state)[0].classification).toBe('IMPOSSIBLE');
+    // Ordering parties you do not command is not impossible — the order lands
+    // as a demand and they decide. What must never happen is compulsion.
+    const governors = checkFeasibility(compileDeterministically('Order the governors to refuse the federal demand.', twilight.state), twilight.state)[0];
+    expect(governors.executable).toBe(true);
+    expect(governors.controlMode).toBe('INFLUENCE');
+    expect(governors.reinterpretedAs).toBe('DEMAND');
   });
 
   it('lets scenario calibration change otherwise identical magnitudes', () => {

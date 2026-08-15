@@ -113,8 +113,12 @@ describe('hard feasibility', () => {
     graph.mechanisms[0].kind = 'DIRECT_ORDER';
     graph.mechanisms[0].targetIds = ['khrushchev'];
     const finding = checkFeasibility(graph, campaign.state)[0];
-    expect(finding.feasible).toBe(false);
-    expect(finding.classification).toBe('IMPOSSIBLE');
+    // Kennedy may issue the demand — that is speech, and it lands. What he may
+    // never have is command over Khrushchev.
+    expect(finding.controlMode).toBe('INFLUENCE');
+    expect(finding.reinterpretedAs).toBe('DEMAND');
+    expect(finding.controlMode).not.toBe('DIRECT');
+    expect(finding.controlMode).not.toBe('DELEGATED');
   });
 
   it('rejects unavailable resources instead of rolling for them', () => {

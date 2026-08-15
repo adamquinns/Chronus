@@ -79,13 +79,28 @@ describe('complete deterministic turn pipeline', () => {
     expect(result.audit.selectedOutcome.id).toBe('deterministic');
   });
 
-  it('does not give an impossible command a lottery chance', async () => {
+  it('never converts a demand into compliance, however forcefully it is issued', async () => {
     const campaign = createCubanCampaign(654);
     const result = await runTurn(campaign, 'Order Khrushchev to surrender immediately.', { persist: false });
-    expect(result.audit.feasibility[0].classification).toBe('IMPOSSIBLE');
-    expect(result.audit.randomDraw).toBeUndefined();
-    expect(result.audit.rngCursorAfter).toBe(result.audit.rngCursorBefore);
-    expect(result.audit.selectedOutcome.id).toBe('no_feasible_effect');
+    // The demand is issued — it is speech the president can perform.
+    expect(result.audit.feasibility[0].controlMode).toBe('INFLUENCE');
+    expect(result.audit.feasibility[0].reinterpretedAs).toBe('DEMAND');
+    // But nothing may commit the surrender: no status change, no capitulation,
+    // and no roll that could manufacture one.
+    expect(result.audit.stateChanges.some((change) =>
+      change.targetId === 'khrushchev' && change.field === 'status')).toBe(false);
+    expect(result.audit.stateChanges.some((change) =>
+      change.targetType === 'GOAL')).toBe(false);
+    const surrenderEffects = result.audit.adjudication.recommendedEffects.filter((effect) =>
+      /surrender|capitulat|withdraw the missiles/i.test(effect.cause));
+    expect(surrenderEffects).toHaveLength(0);
+  });
+
+  it('still refuses a lottery for an act that genuinely cannot be performed', async () => {
+    const result = await runTurn(createCubanCampaign(655), 'Launch a carrier air wing strike on the SAM site.', { persist: false });
+    const finding = result.audit.feasibility[0];
+    expect(finding.classification).toBe('IMPOSSIBLE');
+    expect(finding.executable).toBe(false);
     expect(result.audit.stateChanges.filter((change) => change.sourceEffectId.includes('_m1_'))).toHaveLength(0);
   });
 

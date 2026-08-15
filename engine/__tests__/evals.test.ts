@@ -26,7 +26,13 @@ describe('mandatory single-turn structural eval families', () => {
     hollowGraph.mechanisms[0].kind = 'DIRECT_ORDER';
     const hollow = checkFeasibility(hollowGraph, campaign.state);
     expect(substantive.some((finding) => finding.feasible)).toBe(true);
-    expect(hollow.every((finding) => finding.classification === 'IMPOSSIBLE')).toBe(true);
+    // A hollow control claim is still only a demand: it is performable speech,
+    // never command. Substance is rewarded by having actual leverage, not by
+    // the rival claim being unsayable.
+    expect(hollow.every((finding) => finding.controlMode === 'INFLUENCE')).toBe(true);
+    expect(hollow.every((finding) => finding.reinterpretedAs === 'DEMAND')).toBe(true);
+    expect(substantive.some((finding) => finding.controlMode === 'DIRECT' || finding.controlMode === 'DELEGATED')
+      || substantive.some((finding) => finding.classification === 'POSSIBLE')).toBe(true);
   });
 
   it('does not upgrade vague input through compiler charity', () => {
@@ -101,13 +107,17 @@ describe('mandatory single-turn structural eval families', () => {
 
   it('materially outperforms the retired d20 baseline on deterministic and impossible actions', async () => {
     const certain = await runTurn(createCubanCampaign(10), 'Allocate 1 reconnaissance sortie.', { persist: false });
-    const impossible = await runTurn(createCubanCampaign(11), 'Order Khrushchev to surrender immediately.', { persist: false });
+    const demanded = await runTurn(createCubanCampaign(11), 'Order Khrushchev to surrender immediately.', { persist: false });
     const baselineFailure = runD20Baseline('Allocate 1 reconnaissance sortie.', 'HIGH', 'HIGH', 1);
     const baselineMagic = runD20Baseline('Order Khrushchev to surrender immediately.', 'HIGH', 'HIGH', 8740);
     expect(certain.audit.randomDraw).toBeUndefined();
     expect(certain.audit.selectedOutcome.id).toBe('deterministic');
-    expect(impossible.audit.selectedOutcome.id).toBe('no_feasible_effect');
-    expect(baselineFailure.outcome).not.toBe('VICTORY');
+    // The retired d20 layer let a lucky roll hand the player a Soviet surrender.
+    // The causal engine issues the demand and commits no capitulation at all.
     expect(baselineMagic.outcome).toBe('VICTORY');
+    expect(demanded.audit.stateChanges.some((change) =>
+      change.targetId === 'khrushchev' && change.field === 'status')).toBe(false);
+    expect(demanded.campaign.state.goal.status).toBe('ACTIVE');
+    expect(baselineFailure.outcome).not.toBe('VICTORY');
   });
 });
