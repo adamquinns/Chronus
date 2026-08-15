@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { T3 } from '../theme';
 import { Button, Label } from './ui/Primitives';
+import { SCENARIOS } from '../engine/ledger/scenarios';
 
 export interface SavedCampaignSummary {
   id: string;
@@ -23,9 +24,9 @@ interface Props {
   onChangeAccess: () => void;
 }
 
-const scenarios = [
+export const SCENARIO_CARDS = [
   {
-    id: 'cuban_missile_crisis_black_saturday', year: 'October 27, 1962', label: 'Nuclear crisis',
+    id: 'cuban_missile_crisis', year: 'October 27, 1962', label: 'Nuclear crisis',
     title: 'Midnight in Havana',
     description: 'A U-2 pilot is dead. The Joint Chiefs want action. Moscow is sending contradictory signals, and every hour narrows the path away from war.',
   },
@@ -58,12 +59,16 @@ export const ScenarioMenu: React.FC<Props> = ({
         </div>
       </section>}
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: T3.sp5 }}>
-        {scenarios.map((scenario) => <article key={scenario.id} style={{ background: T3.bg1, border: `1px solid ${T3.line1}`, borderRadius: T3.r4, padding: T3.sp5, display: 'flex', flexDirection: 'column', gap: T3.sp3 }}>
+        {SCENARIO_CARDS.map((scenario) => { const ready = scenario.id in SCENARIOS; return <article key={scenario.id} style={{ background: T3.bg1, border: `1px solid ${T3.line1}`, borderRadius: T3.r4, padding: T3.sp5, display: 'flex', flexDirection: 'column', gap: T3.sp3 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><Label>{scenario.label}</Label><span style={{ color: T3.fg3, fontFamily: T3.fontMono, fontSize: T3.s11 }}>{scenario.year}</span></div>
           <h2 style={{ fontFamily: T3.fontProse, fontSize: T3.s28, fontWeight: 400, color: T3.fg0, margin: 0 }}>{scenario.title}</h2>
           <p style={{ fontFamily: T3.fontProse, color: T3.fg2, lineHeight: 1.55, flex: 1 }}>{scenario.description}</p>
-          <Button primary onClick={() => onSelect(scenario.id)}>Enter the situation →</Button>
-        </article>)}
+          {ready
+            ? <Button primary onClick={() => onSelect(scenario.id)}>Enter the situation →</Button>
+            : <div style={{ color: T3.fg3, fontSize: T3.s11, fontFamily: T3.fontMono, border: `1px dashed ${T3.line2}`, borderRadius: T3.r2, padding: T3.sp3 }}>
+                Not yet written for the ledger engine.
+              </div>}
+        </article>; })}
       </section>
       <section style={{ border: `1px dashed ${T3.line2}`, borderRadius: T3.r3, padding: T3.sp5 }}>
         <Label>Author another divergence</Label>

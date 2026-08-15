@@ -76,7 +76,7 @@ const App: React.FC = () => {
   }, []);
   const developerEnabled = isDeveloperAuditEnabled(import.meta.env.DEV, import.meta.env.VITE_ENABLE_DEVELOPER_AUDIT);
 
-  const refreshSessions = async () => setSessions((await listCampaigns()).filter((item) => ['cuban_missile_crisis_black_saturday', 'american_twilight'].some((scenarioId) => item.id.startsWith(scenarioId === 'cuban_missile_crisis_black_saturday' ? 'cmc_' : scenarioId)) || ['Midnight in Havana', 'Twilight of the Republic'].includes(item.title)));
+  const refreshSessions = async () => setSessions(await listCampaigns());
   useEffect(() => { refreshSessions().catch((caught) => setError(caught instanceof Error ? caught.message : 'Could not read saved campaigns.')); }, []);
 
   useEffect(() => {
