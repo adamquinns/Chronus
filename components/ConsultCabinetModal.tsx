@@ -2,14 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { T3 } from '../theme';
 import { Label, Speaker, Button } from './ui/Primitives';
 import { TurnData } from '../types';
-import { Campaign } from '../engine/domain';
-import { ModelGateway } from '../engine/model';
-import { consultAdvisors } from '../engine/advisors';
+import { Campaign, consultAdvisors } from '../engine/ledger/api';
+import { LedgerGateway } from '../engine/ledger/cassette';
 
 interface ConsultCabinetModalProps {
   turn: TurnData;
   campaign: Campaign;
-  gateway?: ModelGateway;
+  gateway?: LedgerGateway;
   initialAdvisorId?: string;
   onClose: () => void;
 }
@@ -45,8 +44,10 @@ export const ConsultCabinetModal: React.FC<ConsultCabinetModalProps> = ({
 
     try {
       const assessments = await consultAdvisors(campaign, q, gateway);
-      const answer = assessments.find((assessment) => assessment.advisorId === active.id)?.assessment
-        ?? `${active.name} has no further assessment.`;
+      const found = assessments.find((item) => item.name === active.name);
+      const answer = found
+        ? `${found.answer}\n\nInclined to under-weigh: ${found.biasDisclosure}`
+        : `${active.name} has no further assessment.`;
       setTurns(t => {
         const next = [...t];
         next[idx] = { q, a: answer, loading: false, error: null };
@@ -73,8 +74,10 @@ export const ConsultCabinetModal: React.FC<ConsultCabinetModalProps> = ({
     });
     try {
       const assessments = await consultAdvisors(campaign, failed.q, gateway);
-      const answer = assessments.find((assessment) => assessment.advisorId === active.id)?.assessment
-        ?? `${active.name} has no further assessment.`;
+      const found = assessments.find((item) => item.name === active.name);
+      const answer = found
+        ? `${found.answer}\n\nInclined to under-weigh: ${found.biasDisclosure}`
+        : `${active.name} has no further assessment.`;
       setTurns(t => {
         const next = [...t];
         next[idx] = { q: failed.q, a: answer, loading: false, error: null };

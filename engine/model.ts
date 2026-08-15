@@ -1,5 +1,40 @@
 import { z } from 'zod';
-import { ModelCallResult, ModelCallTrace } from './domain';
+/**
+ * The gateway's own vocabulary. These lived in the state-graph domain module
+ * the ledger rewrite replaced; they describe model transport, not the world,
+ * so they belong here.
+ */
+export interface ModelCallUsage {
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+
+export interface ModelCallResult<T> {
+  value: T;
+  model: string;
+  usage: ModelCallUsage;
+  rawText: string;
+}
+
+export interface ModelMessageSnapshot {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+}
+
+export interface ModelCallTrace {
+  id: string;
+  role: string;
+  model: string;
+  schemaName: string;
+  startedAt: string;
+  completedAt: string;
+  status: 'SUCCEEDED' | 'FAILED' | 'CACHED';
+  messages: ModelMessageSnapshot[];
+  rawText?: string;
+  usage?: ModelCallUsage;
+  error?: string;
+}
 
 export type ModelRole =
   | 'strategy_compiler'
@@ -206,7 +241,7 @@ export class OpenRouterGateway implements ModelGateway {
     const route = this.routes[role];
     let repairMessages = [...messages];
     let lastError: unknown;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
       this.budget.assertAvailable();
       const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
@@ -262,10 +297,19 @@ export class OpenRouterGateway implements ModelGateway {
         return { value, model: route.model, usage: { inputTokens, outputTokens, costUsd }, rawText };
       } catch (error) {
         lastError = error;
+        // A length overflow is the one failure the model must fix by rewriting
+        // content: telling it to preserve the text verbatim guarantees a loop.
+        const detail = error instanceof Error ? error.message.slice(0, 1200) : 'unknown error';
+        const tooLong = /too_big|too long|at most \d+ character/i.test(detail);
         repairMessages = [
           ...messages,
           { role: 'assistant', content: rawText },
-          { role: 'user', content: `The JSON failed schema validation. Repair structure and enum values only; do not change substantive judgment. Validation: ${error instanceof Error ? error.message.slice(0, 1200) : 'unknown error'}` },
+          {
+            role: 'user',
+            content: tooLong
+              ? `The JSON exceeded a length limit. Shorten the offending fields to fit, keeping the same events, names and judgment — cut wording, never substance. Validation: ${detail}`
+              : `The JSON failed schema validation. Repair structure and enum values only; do not change substantive judgment. Validation: ${detail}`,
+          },
         ];
       }
     }

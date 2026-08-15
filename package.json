@@ -20,7 +20,8 @@
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist",
     "eval:matrix": "node --import tsx evals/preset-matrix.ts",
-    "eval:dynamic": "node --import tsx evals/dynamic-world-live.ts"
+    "eval:dynamic": "node --import tsx evals/dynamic-world-live.ts",
+    "cassette:record": "node --import tsx evals/record-cassette.ts"
   },
   "dependencies": {
     "idb": "^8.0.3",
@@ -31,6 +32,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.21",
     "gh-pages": "^6.3.0",

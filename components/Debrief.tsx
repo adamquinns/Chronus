@@ -3,9 +3,6 @@ import { T3 } from '../theme';
 import { useMinWidth } from '../hooks/useBreakpoint';
 import { Label, Delta, Gauge, Button } from './ui/Primitives';
 import { TurnData, HistoryEntry } from '../types';
-import { Campaign } from '../engine/domain';
-import { playerVisibleState } from '../engine/projections';
-import { calibrationSummary } from '../engine/forecast';
 
 interface DebriefProps {
   result: NonNullable<TurnData['goalResult']>;
@@ -15,7 +12,6 @@ interface DebriefProps {
   onNewScenario: () => void;
   onContinue?: () => void;         // continue to next goal (when game isn't over)
   hasNextGoal: boolean;
-  campaign?: Campaign;
 }
 
 function computeTurningPoints(history: HistoryEntry[]) {
@@ -53,7 +49,7 @@ function computeStats(history: HistoryEntry[]) {
 }
 
 export const Debrief: React.FC<DebriefProps> = ({
-  result, history, finalTurn, onReplay, onNewScenario, onContinue, hasNextGoal, campaign,
+  result, history, finalTurn, onReplay, onNewScenario, onContinue, hasNextGoal,
 }) => {
   const isLaptop = useMinWidth(1024);
   const victory = result.outcome === 'VICTORY';
@@ -133,9 +129,6 @@ export const Debrief: React.FC<DebriefProps> = ({
             </div>
           </div>
 
-          {campaign && <Calibration campaign={campaign} />}
-          {campaign && <Calibration campaign={campaign} />}
-        {campaign && <Declassification campaign={campaign} />}
 
           <div style={{
             marginTop: T3.sp6, display: 'flex', flexDirection: 'column', gap: T3.sp2,
@@ -211,8 +204,6 @@ export const Debrief: React.FC<DebriefProps> = ({
             </ol>
           </div>
         )}
-        {campaign && <Calibration campaign={campaign} />}
-        {campaign && <Declassification campaign={campaign} />}
       </section>
 
       <aside style={{
@@ -238,37 +229,6 @@ export const Debrief: React.FC<DebriefProps> = ({
   );
 };
 
-const Calibration: React.FC<{ campaign: Campaign }> = ({ campaign }) => {
-  const summary = calibrationSummary(campaign.forecastRecord);
-  if (!summary.forecasts) return null;
-  const scored = campaign.audits.filter((audit) => audit.forecastScore);
-  return (
-    <section style={{ marginTop: T3.sp6, padding: T3.sp5, background: T3.bg1, border: `1px solid ${T3.line1}`, borderRadius: T3.r3 }}>
-      <Label>Your calibration</Label>
-      <p style={{ fontFamily: T3.fontProse, fontSize: T3.s15, color: T3.fg0, lineHeight: 1.5, margin: `${T3.sp3} 0` }}>
-        {summary.headline}
-      </p>
-      <div style={{ display: 'flex', gap: T3.sp5, flexWrap: 'wrap', marginBottom: T3.sp4 }}>
-        <Stat label="Outcome exact" value={`${Math.round(summary.outcomeAccuracy * 100)}%`} />
-        <Stat label="Within one band" value={`${Math.round(summary.outcomeWithinOne * 100)}%`} />
-        <Stat label="Actor reads" value={`${Math.round(summary.actorAccuracy * 100)}%`} />
-        <Stat label="Bias" value={summary.bias.toLowerCase()} />
-      </div>
-      <div style={{ display: 'grid', gap: T3.sp2 }}>
-        {scored.slice(-6).map((audit) => (
-          <div key={audit.id} style={{ display: 'flex', gap: T3.sp3, alignItems: 'baseline', fontSize: T3.s12, color: T3.fg2 }}>
-            <span style={{ color: T3.fg3, fontFamily: T3.fontMono }}>T{audit.turn}</span>
-            <span style={{ color: audit.forecastScore!.outcomeResult === 'HIT' ? T3.pos : audit.forecastScore!.outcomeResult === 'MISS' ? T3.neg : T3.fg2 }}>
-              {audit.forecastScore!.outcomeResult}
-            </span>
-            <span>predicted {audit.forecastScore!.predictedOutcome.replace('_', ' ').toLowerCase()} · actual {audit.forecastScore!.actualOutcome.replace('_', ' ').toLowerCase()}</span>
-            {audit.forecastScore!.freeText && <span style={{ color: T3.fg3, fontStyle: 'italic' }}>“{audit.forecastScore!.freeText}”</span>}
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-};
 
 const Stat: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div>
@@ -277,16 +237,6 @@ const Stat: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   </div>
 );
 
-const Declassification: React.FC<{ campaign: Campaign }> = ({ campaign }) => {
-  const visible = playerVisibleState(campaign.state, campaign.beliefs);
-  return <details style={{ marginTop: T3.sp7, border: `1px solid ${T3.line2}`, borderRadius: T3.r3, padding: T3.sp4, background: T3.bg1 }}>
-    <summary style={{ cursor: 'pointer', color: T3.sig, fontWeight: 600 }}>Post-game declassification</summary>
-    <p style={{ color: T3.fg3, fontSize: T3.s12 }}>Facts released at game over and the belief record that shaped each decision.</p>
-    {visible.knownFacts.map((fact) => <div key={fact.id} style={{ padding: `${T3.sp2} 0`, borderTop: `1px solid ${T3.line1}`, color: T3.fg1, fontSize: T3.s12 }}>{fact.statement}<div style={{ color: T3.fg3, fontFamily: T3.fontMono, fontSize: T3.s10 }}>{fact.provenance.replaceAll('_', ' ')} · {fact.sourceRefs.join('; ') || 'scenario record'}</div></div>)}
-    <Label style={{ display: 'block', marginTop: T3.sp4 }}>What the player believed</Label>
-    {campaign.audits.map((audit) => <details key={audit.id} style={{ marginTop: T3.sp2 }}><summary style={{ color: T3.fg2, cursor: 'pointer', fontSize: T3.s12 }}>Turn {audit.turn} · {audit.narrative.title}</summary><pre style={{ whiteSpace: 'pre-wrap', color: T3.fg3, fontSize: T3.s10, overflow: 'auto' }}>{JSON.stringify(Object.values(audit.previousBeliefSnapshot.player.beliefs), null, 2)}</pre></details>)}
-  </details>;
-};
 
 const StatTile: React.FC<{ label: string; value: string; large?: boolean }> = ({
   label, value, large,

@@ -6,15 +6,21 @@ import { GameConsole } from './components/GameConsole';
 import { JournalDrawer } from './components/JournalDrawer';
 import { ResolvingScreen } from './components/ResolvingScreen';
 import { SavedCampaignSummary, ScenarioMenu } from './components/ScenarioMenu';
-import { Campaign, DirectiveRevisionError, EntityState, PlayerForecast, TurnOption, TurnPreview, TurnProgress } from './engine/domain';
-import { generateCustomScenario } from './engine/authoring';
 import { MODEL_PRESETS, ModelPresetName, OpenRouterGateway } from './engine/model';
-import { generateTurnOptions } from './engine/options';
-import { attachForecast } from './engine/forecast';
-import { runTurn } from './engine/pipeline';
-import { createCampaign } from './engine/scenarios';
-import { deleteCampaign, exportCampaign, getSetting, importCampaign, listCampaigns, loadCampaign, saveCampaign, setSetting } from './engine/persistence';
-import { buildConsoleModel, buildHistoryModel } from './engine/viewModel';
+import { LedgerGateway } from './engine/ledger/cassette';
+import {
+  Campaign,
+  DirectiveRevisionNeeded,
+  PlayerForecast,
+  advanceTurn,
+  consoleModel,
+  consultAdvisors as askAdvisors,
+  historyModel,
+  scoreForecast,
+  startCampaign,
+  suggestDirectives,
+} from './engine/ledger/api';
+import { deleteCampaign, exportCampaign, getSetting, importCampaign, listCampaigns, loadCampaign, saveCampaign, setSetting } from './engine/ledger/persistence';
 import { isDeveloperAuditEnabled } from './components/playerVisibility';
 import { T3 } from './theme';
 
@@ -31,21 +37,20 @@ const download = (name: string, body: string) => {
 
 const App: React.FC = () => {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('chronus_openrouter_key') ?? '');
-  const [demoMode, setDemoMode] = useState(false);
   const [screen, setScreen] = useState<Screen>(() => apiKey ? 'MENU' : 'GATEWAY');
   const [campaign, setCampaign] = useState<Campaign>();
   const [sessions, setSessions] = useState<SavedCampaignSummary[]>([]);
-  const [options, setOptions] = useState<TurnOption[]>([]);
+  const [options, setOptions] = useState<Array<{ id: string; label: string; directive: string; rationale: string; tradeoff: string }>>([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
   const [directive, setDirective] = useState('');
-  const [preview, setPreview] = useState<TurnPreview>();
-  const [progress, setProgress] = useState<TurnProgress[]>([]);
+  const [preview, setPreview] = useState<{ strategy: string; advantages: string[]; uncertainties: string[]; stakes: string[]; advisorAssessments: string[]; intelligenceNotes: string[]; strategicTradeoffs: string[] }>();
+  const [progress, setProgress] = useState<Array<{ stage: string; label: string; detail?: string; status: 'STARTED' | 'COMPLETED'; at: string }>>([]);
   const [pendingCampaign, setPendingCampaign] = useState<Campaign>();
   const [error, setError] = useState<string>();
   const [journalOpen, setJournalOpen] = useState(false);
   const [revisionNotice, setRevisionNotice] = useState<string>();
-  const forecastRef = useRef<PlayerForecast>();
-  const pendingResult = useRef<Awaited<ReturnType<typeof runTurn>>>();
+  const forecastRef = useRef<PlayerForecast | undefined>(undefined);
+  const pendingResult = useRef<Campaign | undefined>(undefined);
   const [forecastSettled, setForecastSettled] = useState(false);
   const [consultOpen, setConsultOpen] = useState(false);
   const [consultAdvisorId, setConsultAdvisorId] = useState<string>();
@@ -54,12 +59,16 @@ const App: React.FC = () => {
   const [preset, setPreset] = useState<ModelPresetName>('standard');
   const [developerTurn, setDeveloperTurn] = useState(0);
 
-  const gateway = useMemo(() => apiKey && !demoMode ? new OpenRouterGateway(apiKey, MODEL_PRESETS[preset], {
-    maxUsd: 3,
-    maxRequests: 18,
-    maxInputTokens: 120_000,
-    maxOutputTokens: 40_000,
-  }) : undefined, [apiKey, demoMode, preset, campaign?.state.turn]);
+  const gateway = useMemo(() => {
+    if (!apiKey) return undefined;
+    const model = new OpenRouterGateway(apiKey, MODEL_PRESETS[preset], {
+      maxUsd: 3,
+      maxRequests: 18,
+      maxInputTokens: 120_000,
+      maxOutputTokens: 40_000,
+    });
+    return new LedgerGateway({ mode: 'live', gateway: model });
+  }, [apiKey, preset, campaign?.ledger.turn]);
   useEffect(() => {
     getSetting<ModelPresetName>('modelPreset')
       .then((stored) => { if (stored && stored in MODEL_PRESETS) setPreset(stored); })
@@ -71,10 +80,11 @@ const App: React.FC = () => {
   useEffect(() => { refreshSessions().catch((caught) => setError(caught instanceof Error ? caught.message : 'Could not read saved campaigns.')); }, []);
 
   useEffect(() => {
-    if (!campaign || screen !== 'PLAYING' || campaign.state.gameOver) return;
+    if (!campaign || screen !== 'PLAYING' || campaign.ledger.concluded) return;
     let active = true;
     setLoadingOptions(true);
-    generateTurnOptions(campaign, gateway).then((items) => { if (active) setOptions(items); })
+    if (!gateway) { setLoadingOptions(false); return; }
+    suggestDirectives(campaign, gateway).then((items) => { if (active) setOptions(items); })
       .catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : 'Could not generate options.'); })
       .finally(() => { if (active) setLoadingOptions(false); });
     return () => { active = false; };
@@ -82,7 +92,7 @@ const App: React.FC = () => {
 
   const begin = async (scenarioId: string) => {
     try {
-      const next = createCampaign(scenarioId);
+      const next = startCampaign(scenarioId);
       await saveCampaign(next);
       setCampaign(next);
       setOptions([]);
@@ -113,18 +123,31 @@ const App: React.FC = () => {
     pendingResult.current = undefined;
     setForecastSettled(false);
     setScreen('RESOLVING');
+    if (!gateway) { setError('Model access is required to resolve a turn.'); setScreen('PLAYING'); return; }
     try {
-      const result = await runTurn(campaign, text.trim(), {
-        gateway,
-        persist: true,
-        storage: { save: saveCampaign },
-        onPreview: setPreview,
-        onProgress: (item) => setProgress((current) => [...current.filter((entry) => entry.stage !== item.stage), item]),
+      const next = await advanceTurn(campaign, text.trim(), gateway, (event) => {
+        setProgress((current) => [
+          ...current.filter((entry) => entry.stage !== event.stage),
+          { stage: event.stage, label: event.label, status: event.done ? 'COMPLETED' : 'STARTED', at: new Date().toISOString() },
+        ]);
+        // What the player knows going in, shown while the world works.
+        if (event.stage === 'INTERPRET' && event.done) {
+          setPreview({
+            strategy: text.trim(),
+            advantages: [],
+            uncertainties: [],
+            stakes: [],
+            advisorAssessments: [],
+            intelligenceNotes: [],
+            strategicTradeoffs: [],
+          });
+        }
       });
-      pendingResult.current = result;
-      setPendingCampaign(result.campaign);
+      await saveCampaign(next);
+      pendingResult.current = next;
+      setPendingCampaign(next);
     } catch (caught) {
-      if (caught instanceof DirectiveRevisionError || (caught as { kind?: string })?.kind === 'DIRECTIVE_REVISION') {
+      if (caught instanceof DirectiveRevisionNeeded || (caught as { kind?: string })?.kind === 'DIRECTIVE_REVISION') {
         // Non-consuming: nothing advanced. Return to the console for revision.
         setRevisionNotice((caught as { playerMessage?: string }).playerMessage ?? (caught as Error).message);
         setScreen('PLAYING');
@@ -138,28 +161,24 @@ const App: React.FC = () => {
     if (!pendingCampaign) return;
     // Score the forecast only now — after resolution, before the player has
     // seen the outcome. Structurally cannot influence adjudication.
-    const settled = forecastRef.current && pendingResult.current
-      ? attachForecast(pendingResult.current, forecastRef.current).campaign
-      : pendingCampaign;
-    if (forecastRef.current && pendingResult.current) await saveCampaign(settled).catch(console.error);
-    setCampaign(settled);
+    // Scored only now: after resolution, before the player has seen the
+    // outcome. It structurally cannot have influenced anything.
+    const record = pendingCampaign.records.at(-1);
+    if (forecastRef.current && record) {
+      const scored = scoreForecast(record, forecastRef.current);
+      console.info('forecast', scored.result, scored.predicted, '→', scored.actual);
+    }
+    setCampaign(pendingCampaign);
     setPendingCampaign(undefined);
     setOptions([]);
     setScreen('PLAYING');
     await refreshSessions();
   };
 
-  const custom = async (prompt: string) => {
-    if (!gateway) return;
-    setGenerating(true);
-    setError(undefined);
-    try {
-      const next = await generateCustomScenario(prompt, gateway);
-      await saveCampaign(next);
-      setCampaign(next);
-      setScreen('PLAYING');
-    } catch (caught) { setError(caught instanceof Error ? caught.message : 'Custom scenario validation failed.'); }
-    finally { setGenerating(false); }
+  const custom = async (_prompt: string) => {
+    // Authoring a scenario from a prompt is a ledger-native feature that has
+    // not been rebuilt yet; the two curated scenarios remain available.
+    setError('Custom scenarios are not available in this build. Choose a curated scenario to begin.');
   };
 
   const importFile = async (file: File) => {
@@ -172,7 +191,7 @@ const App: React.FC = () => {
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Campaign import failed.'); }
   };
 
-  if (screen === 'GATEWAY') return <ApiKeyGateway onUnlock={(key) => { setApiKey(key); setDemoMode(false); setScreen('MENU'); }} onDemo={() => { setDemoMode(true); setScreen('MENU'); }} />;
+  if (screen === 'GATEWAY') return <ApiKeyGateway onUnlock={(key) => { setApiKey(key); setScreen('MENU'); }} />;
 
   if (screen === 'MENU') return <ScenarioMenu
     sessions={sessions}
@@ -189,7 +208,7 @@ const App: React.FC = () => {
 
   if (!campaign) return null;
 
-  const model = buildConsoleModel(campaign, options);
+  const model = consoleModel(campaign, options);
 
   if (screen === 'RESOLVING') return <><ResolvingScreen
     directive={directive}
@@ -197,11 +216,11 @@ const App: React.FC = () => {
     progress={progress}
     resolved={Boolean(pendingCampaign)}
     error={error}
-    morningPaper={campaign?.audits.at(-1)?.narrative.pressCoverage}
-    forecastActors={Object.values<EntityState>(campaign.state.entities)
-      .filter((entity) => entity.id !== campaign.state.manifest.playerId && entity.status === 'ACTIVE')
+    morningPaper={campaign.records.at(-1)?.narration.press}
+    forecastActors={campaign.ledger.cast
+      .filter((member) => member.id !== campaign.ledger.playerId)
       .slice(0, 2)
-      .map((entity) => ({ id: entity.id, name: entity.name }))}
+      .map((member) => ({ id: member.id, name: member.name }))}
     forecastSubmitted={forecastSettled}
     onSubmitForecast={(value) => { forecastRef.current = value; setForecastSettled(true); }}
     onSkipForecast={() => setForecastSettled(true)}
@@ -219,14 +238,13 @@ const App: React.FC = () => {
     />}
   </>;
 
-  const history = buildHistoryModel(campaign);
-  if (campaign.state.gameOver && model.goalResult) return <Debrief
+  const history = historyModel(campaign);
+  if (model.gameOver && model.goalResult) return <Debrief
     result={model.goalResult}
     history={history}
     finalTurn={model}
-    campaign={campaign}
-    hasNextGoal={Boolean(campaign.state.goal.successors?.length)}
-    onReplay={() => begin(campaign.state.manifest.id)}
+    hasNextGoal={false}
+    onReplay={() => begin(campaign.ledger.scenarioId)}
     onNewScenario={() => setScreen('MENU')}
   />;
 
@@ -242,7 +260,7 @@ const App: React.FC = () => {
     />
     <div style={{ position: 'fixed', right: 12, bottom: 72, zIndex: T3.zSticky, display: 'flex', gap: 6 }}>
       <span title="Session model spend" style={{ ...utilityButton, cursor: 'default' }}>
-        ${campaign.audits.reduce((sum, audit) => sum + audit.estimatedCostUsd, 0).toFixed(2)}
+        ${(gateway?.costUsd ?? 0).toFixed(2)}
       </span>
       <select
         aria-label="Model routing preset"
@@ -258,7 +276,7 @@ const App: React.FC = () => {
         <option value="standard">Standard</option>
         <option value="cinematic">Cinematic</option>
       </select>
-      <button onClick={() => download(`chronus-${campaign.state.campaignId}.json`, exportCampaign(campaign))} style={utilityButton}>Export</button>
+      <button onClick={() => download(`chronus-${campaign.ledger.campaignId}.json`, exportCampaign(campaign))} style={utilityButton}>Export</button>
       {developerEnabled && <button onClick={() => setDeveloperOpen(true)} style={utilityButton}>Developer audit</button>}
       <button onClick={() => { setScreen('MENU'); refreshSessions().catch(console.error); }} style={utilityButton}>Timelines</button>
     </div>
@@ -272,11 +290,11 @@ const App: React.FC = () => {
 const utilityButton: React.CSSProperties = { background: T3.bg2, color: T3.fg2, border: `1px solid ${T3.line2}`, borderRadius: T3.r1, padding: '6px 9px', cursor: 'pointer', fontSize: T3.s10 };
 
 const DeveloperAudit: React.FC<{ campaign: Campaign; selected: number; onSelect: (index: number) => void; onClose: () => void }> = ({ campaign, selected, onSelect, onClose }) => {
-  const audit = campaign.audits[selected] ?? campaign.audits.at(-1);
+  const audit = campaign.records[selected] ?? campaign.records.at(-1);
   return <div style={{ position: 'fixed', inset: 0, zIndex: T3.zModal, background: T3.bg0, color: T3.fg1, padding: T3.sp5, overflow: 'auto', fontFamily: T3.fontMono }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: T3.sp3 }}><strong style={{ color: T3.neg }}>DEVELOPER MODE — FULL SPOILER AUDIT</strong><button onClick={onClose} style={utilityButton}>Close</button></div>
-    <div style={{ display: 'flex', gap: 6, margin: `${T3.sp4} 0`, flexWrap: 'wrap' }}>{campaign.audits.map((item, index) => <button key={item.id} onClick={() => onSelect(index)} style={{ ...utilityButton, color: index === selected ? T3.sig : T3.fg2 }}>Turn {item.turn}</button>)}</div>
-    {audit ? <pre style={{ whiteSpace: 'pre-wrap', fontSize: T3.s10 }}>{JSON.stringify(audit, null, 2)}</pre> : <p>No committed audits yet.</p>}
+    <div style={{ display: 'flex', gap: 6, margin: `${T3.sp4} 0`, flexWrap: 'wrap' }}>{campaign.records.map((item, index) => <button key={item.turn} onClick={() => onSelect(index)} style={{ ...utilityButton, color: index === selected ? T3.sig : T3.fg2 }}>Turn {item.turn}</button>)}</div>
+    {audit ? <pre style={{ whiteSpace: 'pre-wrap', fontSize: T3.s10 }}>{JSON.stringify(audit, null, 2)}</pre> : <p>No committed turns yet.</p>}
   </div>;
 };
 

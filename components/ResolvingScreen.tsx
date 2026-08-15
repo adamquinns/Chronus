@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
-import { ForecastActorStance, ForecastOutcome, PlayerForecast, TurnPreview, TurnProgress } from '../engine/domain';
+import { ForecastOutcome, PlayerForecast } from '../engine/ledger/api';
+
+interface TurnProgress { stage: string; label: string; detail?: string; status: 'STARTED' | 'COMPLETED'; at: string }
+interface TurnPreview { strategy: string; advantages: string[]; uncertainties: string[]; stakes: string[]; advisorAssessments: string[]; intelligenceNotes: string[]; strategicTradeoffs: string[] }
+type ForecastActorStance = 'ESCALATES' | 'HOLDS' | 'ENGAGES';
 import { T3 } from '../theme';
 import { Button, Chip, Label } from './ui/Primitives';
 
@@ -107,7 +111,7 @@ const ForecastPanel: React.FC<{
           })}
           disabled={!outcome}
         >Lock in forecast</Button>
-        <Button variant="ghost" onClick={onSkip}>Skip</Button>
+        <Button onClick={onSkip}>Skip</Button>
       </div>
     </section>
   );
@@ -144,7 +148,7 @@ export const ResolvingScreen: React.FC<ResolvingScreenProps> = ({
           <PreviewList title="Stakes" items={preview.stakes} />
         </div>}
         <div style={{ marginTop: T3.sp4 }}>
-          <Button variant="ghost" onClick={onOpenConsult}>Consult the cabinet while you wait</Button>
+          <Button onClick={onOpenConsult}>Consult the cabinet while you wait</Button>
         </div>
       </section>
 
