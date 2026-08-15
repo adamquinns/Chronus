@@ -216,8 +216,14 @@ export const fallbackAdjudication = (
   const roleMetric = (role: keyof NonNullable<WorldState['manifest']['metricRoles']>) => {
     const configured = state.manifest.metricRoles?.[role];
     if (configured && configured in state.metrics) return configured;
-    const danger = state.manifest.metricDefinitions.find((definition) => definition.dangerAbove !== undefined || definition.dangerBelow !== undefined)?.id;
-    return danger ?? state.manifest.metricDefinitions[0]?.id;
+    // Never silently substitute a danger metric for an unconfigured role: that
+    // is precisely the rhetoric-to-escalation shortcut the causal-path rule
+    // forbids. Only `escalation` may resolve to a danger-flagged metric.
+    if (role === 'escalation') {
+      return state.manifest.metricDefinitions.find((definition) => definition.dangerAbove !== undefined)?.id;
+    }
+    return state.manifest.metricDefinitions.find((definition) =>
+      definition.dangerAbove === undefined && definition.dangerBelow === undefined)?.id;
   };
   const pushMetric = (
     mechanismId: string,
@@ -539,6 +545,67 @@ export const sanitizeAdjudication = (
     ].filter((id) => effectIds.has(id)))],
   })));
   return { ...adjudication, recommendedEffects, outcomeBands };
+};
+
+const REFUSAL = /\b(?:declin|refus|reject|resist|oppos|advise against|push back|deny|denies|denied|rebuff|counter|object)/i;
+const COMPLIANCE = /\b(?:comply|complies|complied|agree|accepts?|accepted|assent|consent|sign|signs|signed|yield|concede)/i;
+
+/**
+ * No-null-reaction floor. If actors visibly responded to the player and the
+ * adjudicator attributed no effect to them, synthesize a minimal, bounded
+ * consequence so an attempt that moved people cannot commit as nothing.
+ * Effects carry actorId, so they commit regardless of the uncertainty draw.
+ */
+export const ensureActorReactions = (
+  adjudication: Adjudication,
+  actorActions: ActorAction[],
+  state: WorldState,
+  graph: StrategyGraph,
+): { adjudication: Adjudication; synthesized: string[] } => {
+  const compellingMechanismIds = new Set(graph.mechanisms
+    .filter((mechanism) => mechanism.kind === 'DIRECT_ORDER' || mechanism.kind === 'COERCION')
+    .map((mechanism) => mechanism.id));
+  const playerId = state.manifest.playerId;
+  const attributed = new Set(adjudication.recommendedEffects.filter((effect) => effect.actorId).map((effect) => effect.actorId!));
+  const synthesized: string[] = [];
+  const additions: EffectRecommendation[] = [];
+  for (const action of actorActions) {
+    if (attributed.has(action.actorId)) continue;
+    // Only actors who actually engaged with the player's move.
+    if (!action.perceivedPlayerMechanismIds.length && !action.initiative) continue;
+    const edge = Object.values(state.relationships).find((relationship) =>
+      (relationship.fromId === playerId && relationship.toId === action.actorId)
+      || (relationship.toId === playerId && relationship.fromId === action.actorId));
+    if (!edge) continue;
+    const complies = COMPLIANCE.test(action.action) && !REFUSAL.test(action.action);
+    const wasCompelled = action.perceivedPlayerMechanismIds.some((id) => compellingMechanismIds.has(id));
+    // Being pressed to comply by someone who cannot compel you is friction,
+    // whether or not the actor's stated response reads as an explicit refusal.
+    // A reaction must never resolve to a zero delta — that is how a turn
+    // becomes a nullity and forces the narrator to invent a silent world.
+    const direction: EffectRecommendation['direction'] = complies ? 'POSITIVE' : 'NEGATIVE';
+    const id = `e_reaction_${action.actorId}`;
+    additions.push({
+      id,
+      mechanismId: `actor:${action.actorId}`,
+      targetType: 'RELATIONSHIP',
+      targetId: edge.id,
+      field: complies ? 'alignment' : 'trust',
+      direction,
+      impactClass: wasCompelled || complies ? 'MINOR' : 'TRIVIAL',
+      confidence: 'MEDIUM',
+      engagement: 'ENGAGES',
+      cause: `${state.entities[action.actorId]?.name ?? action.actorId} responded to the player's move: ${action.action}`,
+      dependencies: [action.actorId],
+      actorId: action.actorId,
+    });
+    synthesized.push(id);
+  }
+  if (!additions.length) return { adjudication, synthesized };
+  return {
+    adjudication: { ...adjudication, recommendedEffects: [...adjudication.recommendedEffects, ...additions] },
+    synthesized,
+  };
 };
 
 export const enforceHardFeasibility = (

@@ -43,11 +43,22 @@ export const inferMechanismKind = (text: string): StrategyMechanism['kind'] => {
   return 'OTHER';
 };
 
+const word = (haystack: string, needle: string) =>
+  new RegExp(`\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(haystack);
+
 const referencedIds = (text: string, state: WorldState) => Object.values(state.entities)
   .filter((entity) => {
     const lower = text.toLowerCase();
     if (entity.id === state.manifest.playerId && /\brobert kennedy\b/i.test(text) && !/\bjohn(?: f\.)? kennedy\b|\bpresident kennedy\b/i.test(text)) return false;
-    return lower.includes(entity.name.toLowerCase().split(' ').at(-1)!) || lower.includes(entity.id.replaceAll('_', ' '));
+    const name = entity.name.toLowerCase();
+    if (word(lower, name) || word(lower, entity.id.replaceAll('_', ' '))) return true;
+    // A trailing token identifies a PERSON (surname convention) but not an
+    // institution: the last word of "Soviet Group of Forces in Cuba" is a
+    // place and of "NATO Allies" is a generic noun. Matching those turns any
+    // mention of a destination or of "allies" into a targeted actor.
+    if (entity.kind !== 'PERSON') return false;
+    const surname = name.split(' ').at(-1)!;
+    return surname.length > 3 && word(lower, surname);
   })
   .map((entity) => entity.id);
 
@@ -295,6 +306,7 @@ export const checkFeasibility = (graph: StrategyGraph, state: WorldState): Feasi
     let classification: FeasibilityFinding['classification'] = 'POSSIBLE';
     let availableFraction = 1;
     let unmechanizedControlRequest = false;
+    let lacksCompulsion = false;
     const scopedRules = state.manifest.authorityRules.filter((rule) =>
       rule.actorId === playerId
       && (mechanism.targetIds.includes(rule.targetId) || (!mechanism.targetIds.length && rule.targetId === playerId))
@@ -348,11 +360,19 @@ export const checkFeasibility = (graph: StrategyGraph, state: WorldState): Feasi
         availableFraction = 0;
       }
     }
-    if (mechanism.kind === 'DIRECT_ORDER' && mechanism.targetIds.some((id) =>
-      !controlled.has(id) && !matchingRules.some((rule) => rule.targetId === id && (rule.mode === 'DIRECT' || rule.mode === 'DELEGATED')))) {
-      feasible = false;
-      unmechanizedControlRequest = true;
-      constraints.push('The player lacks direct authority over at least one target. Interpret as a request or influence attempt.');
+    // Any mechanism that seeks compliance FROM another actor has the same
+    // structure: the player can perform the act, but the target decides.
+    const COMPLIANCE_SEEKING: StrategyMechanism['kind'][] = ['DIRECT_ORDER', 'COERCION'];
+    const uncommandableTargets = COMPLIANCE_SEEKING.includes(mechanism.kind)
+      ? mechanism.targetIds.filter((id) =>
+        !controlled.has(id) && !matchingRules.some((rule) => rule.targetId === id && (rule.mode === 'DIRECT' || rule.mode === 'DELEGATED')))
+      : [];
+    if (uncommandableTargets.length) {
+      // The player cannot COMPEL these targets — but issuing the order is still
+      // an act that lands. Reinterpret as a demand (PRD §4.2/§6) rather than
+      // erasing it. Compliance becomes the target's own decision.
+      lacksCompulsion = true;
+      reasons.push(`No authority compels ${uncommandableTargets.join(', ')}; the order lands as a demand and compliance is theirs to decide.`);
     }
     if (mechanism.kind === 'DIRECT_ORDER' && mechanism.targetIds.length === 0) {
       feasible = false;
@@ -393,16 +413,26 @@ export const checkFeasibility = (graph: StrategyGraph, state: WorldState): Feasi
         reasons.push(rule.description);
       }
     }
-    if (mechanism.kind === 'DIPLOMACY' && mechanism.targetIds.length) {
-      const reachable = mechanism.targetIds.some((targetId) => Object.values(state.relationships).some((relationship) =>
-        relationship.communication && ((relationship.fromId === playerId && relationship.toId === targetId) || (relationship.toId === playerId && relationship.fromId === targetId)),
-      ));
-      if (!reachable) {
+    const channelTo = (targetId: string) => controlled.has(targetId) || Object.values(state.relationships).some((relationship) =>
+      relationship.communication && ((relationship.fromId === playerId && relationship.toId === targetId) || (relationship.toId === playerId && relationship.fromId === targetId)));
+    if ((mechanism.kind === 'DIPLOMACY' || mechanism.kind === 'DIRECT_ORDER' || mechanism.kind === 'COERCION') && mechanism.targetIds.length) {
+      if (!mechanism.targetIds.some(channelTo)) {
         feasible = false;
         availableFraction = 0;
         constraints.push('No available communication channel to the specified target.');
       }
     }
+    // Informal power: where no formal rule grants control, leverage/trust with
+    // the target still determines how hard the attempt bites. A head of
+    // government demanding of their own institutions carries real weight.
+    const informalLeverage = mechanism.targetIds.length
+      ? Math.round(mechanism.targetIds.reduce((best, targetId) => {
+        const edge = Object.values(state.relationships).find((relationship) =>
+          (relationship.fromId === playerId && relationship.toId === targetId) || (relationship.toId === playerId && relationship.fromId === targetId));
+        if (!edge) return best;
+        return Math.max(best, (edge.leverage * 0.6) + (edge.alignment * 0.25) + (edge.trust * 0.15));
+      }, 0))
+      : 0;
     if (mechanism.sequence >= 6) {
       classification = 'DELAYED';
       availableFraction = Math.min(availableFraction, 0.5);
@@ -416,11 +446,30 @@ export const checkFeasibility = (graph: StrategyGraph, state: WorldState): Feasi
     } else if (mechanism.kind === 'RESOURCE_TRANSFER' && mechanism.resourceClaims.length === 0) {
       reasons.push('The resource and amount are insufficiently specified for deterministic execution.');
     }
+    const executable = feasible || (lacksCompulsion && availableFraction > 0);
     if (!feasible) classification = unmechanizedControlRequest || availableFraction <= 0 ? 'IMPOSSIBLE' : 'DELAYED';
+    if (lacksCompulsion && executable) {
+      // Executable act, no compulsion: an influence attempt, not a nullity.
+      classification = classification === 'DELAYED' ? 'DELAYED' : 'POSSIBLE';
+      feasible = true;
+    }
     if (graph.mechanisms.length > 6) {
       availableFraction *= 6 / graph.mechanisms.length;
       reasons.push('Organizational attention is diluted across an oversized strategic package.');
     }
-    return { mechanismId: mechanism.id, feasible, classification, controlMode, capabilityEvidence, reasons, hardConstraints: constraints, availableFraction };
+    const effectiveControl: ControlMode = lacksCompulsion && controlMode === 'NONE' ? 'INFLUENCE' : controlMode;
+    return {
+      mechanismId: mechanism.id,
+      feasible,
+      classification,
+      controlMode: effectiveControl,
+      capabilityEvidence,
+      reasons,
+      hardConstraints: constraints,
+      availableFraction,
+      executable: classification !== 'IMPOSSIBLE',
+      reinterpretedAs: lacksCompulsion ? (COMPLIANCE_SEEKING.includes(mechanism.kind) ? 'DEMAND' : 'REQUEST') : undefined,
+      informalLeverage,
+    };
   });
 };

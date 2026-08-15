@@ -460,6 +460,20 @@ export interface FeasibilityFinding {
   reasons: string[];
   hardConstraints: string[];
   availableFraction: number;
+  /**
+   * Can the player perform the initiating act at all — place the call, issue
+   * the demand, convene the meeting? This is separate from whether they can
+   * compel the target's compliance (`controlMode`). A president ordering
+   * someone he cannot command is still making a demand that lands.
+   * IMPOSSIBLE is reserved for acts that cannot be performed: no capability,
+   * no channel, no resource, anachronism, or a prohibiting hard rule.
+   */
+  executable: boolean;
+  /** When authority is absent but the act still lands, how it is reinterpreted. */
+  reinterpretedAs?: 'DEMAND' | 'REQUEST' | 'APPEAL';
+  /** Informal leverage over the target (0-100), derived from relationships when
+   * no formal authority rule applies. Drives how hard an influence attempt bites. */
+  informalLeverage?: number;
 }
 
 export interface ActorAction {

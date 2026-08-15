@@ -114,7 +114,9 @@ describe('dynamic actors are full, non-omniscient citizens', () => {
     const hybrid = await runTurn(createCubanCampaign(52), LIVE_DIRECTIVE_2, { persist: false });
     expect(hybrid.audit.narrativePacket?.outcomeLedger.setAside.length).toBeGreaterThanOrEqual(2);
     expect(hybrid.audit.narrative.strategicConsequences).toMatch(/set aside|not player-controlled|blocked/i);
-    const blocked = await runTurn(createCubanCampaign(53), 'Order the Governor of Florida to fly to Cuba and negotiate a settlement.', { persist: false });
+    // A genuinely blocked act: a scenario hard rule forbids ordering Soviet
+    // withdrawal, so the ACT itself cannot be performed.
+    const blocked = await runTurn(createCubanCampaign(53), 'Order Khrushchev to withdraw the missiles from Cuba immediately.', { persist: false });
     expect(blocked.audit.narrativePacket?.outcomeLedger.blocked.length).toBeGreaterThanOrEqual(1);
   });
 });
@@ -147,16 +149,66 @@ describe('Florida governor canonical pair', () => {
     escalationChangesAreGrounded(result);
   });
 
-  it('treats an unauthorized order as an attempt, not control, while still grounding the target', async () => {
+  it('treats an unauthorized order as an executable demand — the act lands, compliance does not', async () => {
     const campaign = createCubanCampaign(47);
     const result = await runTurn(campaign, 'Order the Governor of Florida to fly to Cuba and negotiate a settlement.', { persist: false });
     expect(result.campaign.state.entities.farris_bryant).toBeDefined();
     const finding = result.audit.feasibility[0];
-    expect(finding.classification).toBe('IMPOSSIBLE');
-    expect(finding.hardConstraints.join(' ')).toMatch(/request or influence attempt/i);
-    // No committed change may assert the governor complied.
+    // The order lands as a demand: performable act, no power to compel.
+    expect(finding.executable).toBe(true);
+    expect(finding.classification).not.toBe('IMPOSSIBLE');
+    expect(finding.controlMode).toBe('INFLUENCE');
+    expect(finding.reinterpretedAs).toBe('DEMAND');
+    expect(finding.reasons.join(' ')).toMatch(/no authority compels/i);
+    // But nothing may assert the governor obeyed.
     expect(result.audit.stateChanges.filter((change) =>
-      change.targetId === 'farris_bryant' && change.field !== 'create')).toEqual([]);
+      change.targetId === 'farris_bryant' && change.field === 'status')).toEqual([]);
+    // "fly to Cuba" must not target the Soviet forces entity by place name.
+    expect(result.audit.dryStrategy.mechanisms[0].targetIds).not.toContain('soviet_cuba');
+  });
+});
+
+describe('an attempt that moves people always has consequences', () => {
+  const DEMAND = 'I demand that LBJ resigns immediately. I demand loyalty from my cabinet and staff to make this happen in the next 30 minutes.';
+
+  it('lands the demand, lets actors respond, and commits their reaction', async () => {
+    const result = await runTurn(createCubanCampaign(91), DEMAND, { persist: false });
+
+    // 1. The act is performable even though nothing compels compliance.
+    const lbjMechanism = result.audit.dryStrategy.mechanisms.find((mechanism) => mechanism.targetIds.includes('lyndon_johnson'))!;
+    expect(lbjMechanism).toBeDefined();
+    const finding = result.audit.feasibility.find((item) => item.mechanismId === lbjMechanism.id)!;
+    expect(finding.executable).toBe(true);
+    expect(finding.controlMode).toBe('INFLUENCE');
+    expect(finding.reinterpretedAs).toBe('DEMAND');
+
+    // 2. The targeted actor actually responds.
+    expect(result.audit.actorActions.some((action) => action.actorId === 'lyndon_johnson')).toBe(true);
+
+    // 3. That response reaches committed state — the turn cannot be a nullity.
+    const actorAttributed = result.audit.stateChanges.filter((change) =>
+      change.field !== 'create' && /responded to the player|lyndon|johnson/i.test(change.cause));
+    expect(actorAttributed.length).toBeGreaterThanOrEqual(1);
+
+    // 4. But no resignation is granted.
+    expect(result.audit.stateChanges.some((change) =>
+      change.targetId === 'lyndon_johnson' && change.field === 'status')).toBe(false);
+
+    // 5. The narrator is told what the actors visibly did, so it cannot invent
+    //    an account of a silent world.
+    expect(result.audit.narrativePacket!.outcomeLedger.observedResponses.length).toBeGreaterThanOrEqual(1);
+    expect(result.audit.narrativePacket!.outcomeLedger.observedResponses.join(' ')).toMatch(/johnson/i);
+  });
+
+  it('does not match institutions by a trailing place or generic noun', () => {
+    const state = createCubanCampaign(92).state;
+    const cuba = compileDeterministically('Send the delegation to Cuba for talks.', state);
+    expect(cuba.mechanisms[0].targetIds).not.toContain('soviet_cuba');
+    const allies = compileDeterministically('Ask my allies in Congress to hold the line.', state);
+    expect(allies.mechanisms[0].targetIds).not.toContain('nato');
+    // Real names still resolve.
+    const named = compileDeterministically('Contact Khrushchev directly.', state);
+    expect(named.mechanisms[0].targetIds).toContain('khrushchev');
   });
 });
 

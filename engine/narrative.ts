@@ -51,12 +51,26 @@ export const buildNarrativePacket = (
     if (hiddenFactPhrases.some((phrase) => action.toLowerCase().includes(phrase))) {
       return `${actorName} made an observable independent move; protected details remain outside the player report.`;
     }
-    if (action.toLowerCase().startsWith(actorName.toLowerCase()) || /continues pursuing/i.test(action)) {
+    // Strip a redundant leading name rather than discarding the sentence: the
+    // substance of what an actor did is exactly what the narrator needs.
+    const withoutName = action.replace(new RegExp(`^${actorName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*`, 'i'), '').trim();
+    if (/continues pursuing/i.test(action) || withoutName.length < 12) {
       return `${actorName} continued its visible institutional initiative.`;
     }
-    return action;
+    return withoutName.charAt(0).toLowerCase() + withoutName.slice(1);
   };
-  const visibleActorIds = new Set(selectedEffects.filter((effect) => effect.actorId && visibleEffectIds.has(effect.id)).map((effect) => effect.actorId!));
+  // An actor's response to the player is observable to the player whether or
+  // not it produced a committed mechanical effect: if you demand something of
+  // your cabinet and they convene to refuse, you SEE that. Withholding it here
+  // is what forces the narrator to invent an account of a silent world.
+  const playerMechanismIds = new Set(graph.mechanisms.map((mechanism) => mechanism.id));
+  const respondedToPlayer = (action: ActorAction) =>
+    action.perceivedPlayerMechanismIds.some((id) => playerMechanismIds.has(id))
+    || graph.mechanisms.some((mechanism) => mechanism.targetIds.includes(action.actorId));
+  const visibleActorIds = new Set([
+    ...selectedEffects.filter((effect) => effect.actorId && visibleEffectIds.has(effect.id)).map((effect) => effect.actorId!),
+    ...actorActions.filter(respondedToPlayer).map((action) => action.actorId),
+  ]);
   const visibleActorEvents = actorActions
     .filter((action) => visibleActorIds.has(action.actorId))
     .map((action) => {

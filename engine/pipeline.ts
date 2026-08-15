@@ -18,7 +18,7 @@ import { auditCompilerFidelity, checkFeasibility, classifyTurn, compileStrategy,
 import { ModelGateway } from './model';
 import { adjudicationSchema, normalizeAdjudicationWire } from './schemas';
 import { authoritativeSnapshot } from './projections';
-import { adjudicate, enforceHardFeasibility, fallbackAdjudication, narrate, runRedTeam, sanitizeAdjudication, simulateActors } from './resolution';
+import { adjudicate, ensureActorReactions, enforceHardFeasibility, fallbackAdjudication, narrate, runRedTeam, sanitizeAdjudication, simulateActors } from './resolution';
 import { commitEffects, evolvePendingProcesses, updateBeliefsFromChanges, validateWorld } from './state';
 import { drawSeeded, selectWeighted } from './rng';
 import { autonomousWorldEffects, historicalPriorWeight, retrievePrecedents } from './precedent';
@@ -360,6 +360,12 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
       });
     }
   }
+  const reactionFloor = ensureActorReactions(adjudication, actorActions, world, dryStrategy);
+  adjudication = reactionFloor.adjudication;
+  recoveredValidation.push(...reactionFloor.synthesized.map((effectId) => ({
+    code: 'ACTOR_REACTION_SYNTHESIZED', severity: 'WARNING' as const,
+    message: `${effectId} was synthesized: an actor visibly responded but the adjudication attributed no consequence.`,
+  })));
   progress(options, 'ADJUDICATE', 'Causal effects adjudicated', 'Bounded effect recommendations and uncertainty bands are complete.', 'COMPLETED');
 
   progress(options, 'UNCERTAINTY', 'Resolving residual uncertainty', 'Using a seeded draw only after causal analysis.');
