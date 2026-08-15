@@ -30,7 +30,10 @@ const relevantActorIds = (graph: StrategyGraph, state: WorldState, depth: TurnDe
   }
   Object.values(state.arcs)
     .filter((arc) => arc.status === 'ACTIVE' && arc.ownerId)
-    .sort((a, b) => b.progress - a.progress)
+    // A confrontation the player opened outranks ambient scenario arcs for
+    // actor attention: the storyline they started must not go quiet because
+    // louder background pressure exists.
+    .sort((a, b) => Number(b.id.startsWith('branch_')) - Number(a.id.startsWith('branch_')) || b.progress - a.progress)
     .forEach((arc) => ids.add(arc.ownerId!));
   ids.delete(state.manifest.playerId);
   const limit = depth === 'DEEP' ? 4 : depth === 'COMPLEX' ? 3 : depth === 'STANDARD' ? 2 : 1;

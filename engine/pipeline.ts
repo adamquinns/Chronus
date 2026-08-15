@@ -28,6 +28,7 @@ import { buildAccessDecisionMatrix, projectChangesForViewer, visibility } from '
 import { validateActorActions, validateAdjudicationProposal } from './validation';
 import { snapshotHash } from './audit';
 import { buildCounterfactualBranches } from './branching';
+import { deriveBranchEffects } from './branches';
 import { resolveDetection } from './detection';
 import { buildNarrativePacket } from './narrative';
 import { groundReferences } from './worldExpansion';
@@ -437,6 +438,16 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
         },
       }];
     });
+  // Unresolved confrontations become durable situations rather than one-turn
+  // number nudges.
+  const branches = deriveBranchEffects(dryStrategy, feasibility, actorActions, world);
+  recoveredValidation.push(...branches.opened.map((branchId) => ({
+    code: 'BRANCH_OPENED', severity: 'WARNING' as const,
+    message: `${branchId} opened: an executable attempt left its outcome for another party to decide.`,
+  })), ...branches.escalated.map((branchId) => ({
+    code: 'BRANCH_ESCALATED', severity: 'WARNING' as const,
+    message: `${branchId} escalated: the player pressed an unresolved demand again.`,
+  })));
   const maturedEffects = evolvePendingProcesses(world);
   const worldEffects = autonomousWorldEffects(world);
   progress(
@@ -448,7 +459,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
   );
 
   progress(options, 'COMMIT', 'Committing authoritative state', 'Applying validated effects with causal provenance.');
-  const committed = commitEffects(campaign.state, [...selectedEffects, ...scheduledEffects, ...maturedEffects, ...worldEffects], grounding.proposal);
+  const committed = commitEffects(campaign.state, [...selectedEffects, ...scheduledEffects, ...branches.effects, ...maturedEffects, ...worldEffects], grounding.proposal);
   committed.state.rngCursor = draw?.cursor ?? detection.cursor;
   committed.state = advanceScenarioTime(committed.state);
   progress(options, 'COMMIT', 'History committed', 'Only engine-validated effects changed authoritative state.', 'COMPLETED');

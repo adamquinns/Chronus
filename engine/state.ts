@@ -1,4 +1,5 @@
 import {
+  ArcState,
   BeliefState,
   EffectRecommendation,
   ProposedEffect,
@@ -218,6 +219,14 @@ export const commitEffects = (
       record(effect, before, result.after, result.after - before);
     } else if (effect.targetType === 'ARC') {
       const arc = state.arcs[effect.targetId];
+      if (!arc && effect.field === 'create' && (effect as ProposedEffect).setValue) {
+        // A confrontation the player started becomes a durable object in the
+        // world, created through the same commit path as everything else.
+        const created = structuredClone((effect as ProposedEffect).setValue) as ArcState;
+        state.arcs[created.id] = created;
+        record(effect, undefined, created);
+        continue;
+      }
       if (!arc || effect.field !== 'progress') continue;
       const before = arc.progress;
       const result = applyNumeric(before, effect, state, effect.targetId, 0, arc.threshold);
