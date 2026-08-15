@@ -308,7 +308,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
       message: `${effect.id} was removed: commitments effects require a commitment string.`,
     })));
   }
-  let proposalFailures = validateAdjudicationProposal(rawAdjudication, dryStrategy, feasibility, world, actorActions)
+  let proposalFailures = validateAdjudicationProposal(rawAdjudication, dryStrategy, feasibility, world, actorActions, jeopardyIsGrave(jeopardy))
     .filter((issue) => issue.severity === 'ERROR');
   if (proposalFailures.length && options.gateway) {
     const originalFailures = proposalFailures;
@@ -320,7 +320,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
       const filteredRepair = enforceHardFeasibility(rawAdjudication, feasibility);
       rawAdjudication = filteredRepair.adjudication;
       recoveredValidation.push(...filteredRepair.removedEffectIds.map((effectId) => ({ code: 'HARD_FEASIBILITY_EFFECT_REMOVED', severity: 'WARNING' as const, message: `${effectId} was removed from repaired adjudication because its mechanism is hard-impossible.` })));
-      proposalFailures = validateAdjudicationProposal(rawAdjudication, dryStrategy, feasibility, world, actorActions)
+      proposalFailures = validateAdjudicationProposal(rawAdjudication, dryStrategy, feasibility, world, actorActions, jeopardyIsGrave(jeopardy))
         .filter((issue) => issue.severity === 'ERROR');
       recoveredValidation.push(...originalFailures.map((issue) => ({ ...issue, code: `RECOVERED_${issue.code}`, severity: 'WARNING' as const })));
     } catch (error) {
@@ -335,7 +335,7 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
         const filteredEscalation = enforceHardFeasibility(rawAdjudication, feasibility);
         rawAdjudication = filteredEscalation.adjudication;
         recoveredValidation.push(...filteredEscalation.removedEffectIds.map((effectId) => ({ code: 'HARD_FEASIBILITY_EFFECT_REMOVED', severity: 'WARNING' as const, message: `${effectId} was removed from escalated adjudication because its mechanism is hard-impossible.` })));
-        const escalatedFailures = validateAdjudicationProposal(rawAdjudication, dryStrategy, feasibility, world, actorActions)
+        const escalatedFailures = validateAdjudicationProposal(rawAdjudication, dryStrategy, feasibility, world, actorActions, jeopardyIsGrave(jeopardy))
           .filter((issue) => issue.severity === 'ERROR');
         if (escalatedFailures.length) throw new Error(escalatedFailures[0].message);
         recoveredValidation.push(...proposalFailures.map((issue) => ({ ...issue, code: `RECOVERED_${issue.code}`, severity: 'WARNING' as const })));
@@ -388,9 +388,19 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
           ...existing.map((band) => ({ ...band, probability: band.probability * (1 - probability) })),
           {
             id: 'jeopardy_catastrophe',
-            label: jeopardy.physical >= 60 ? 'The exposure is fatal' : 'Authority collapses',
+            label: jeopardy.physical >= 60
+              ? 'The exposure is fatal'
+              : jeopardy.operational >= 60
+                ? 'It is exposed, and read as an act of war'
+                : 'Authority collapses',
             probability,
-            effectIds: catastrophic.map((effect) => effect.id),
+            // Catastrophe replaces the ordinary result, not the things that
+            // happened on the way to it: what the order cost when it was given,
+            // and what other parties did, land in this branch as in any other.
+            effectIds: [...new Set([
+              ...catastrophic.map((effect) => effect.id),
+              ...adjudication.recommendedEffects.filter((effect) => effect.immediate || effect.actorId).map((effect) => effect.id),
+            ])],
             description: jeopardy.reasons.join(' '),
           },
         ]),
@@ -438,7 +448,10 @@ export const runTurn = async (campaign: Campaign, rawDirective: string, options:
   const selectedEffectIds = new Set(selectedOutcome.effectIds);
   const chosenEffects: EffectRecommendation[] = adjudication.recommendedEffects.filter((effect) => selectedEffectIds.has(effect.id));
   const delayedMechanismIds = new Set(feasibility.filter((finding) => finding.classification === 'DELAYED').map((finding) => finding.mechanismId));
-  const selectedEffects = chosenEffects.filter((effect) => !delayedMechanismIds.has(effect.mechanismId));
+  const selectedEffects = chosenEffects.filter((effect) =>
+    // An operation that matures later still costs something the moment it is
+    // ordered: the instrument is strained by being asked, whatever follows.
+    effect.immediate || !delayedMechanismIds.has(effect.mechanismId));
   const scheduledEffects: EffectRecommendation[] = dryStrategy.mechanisms
     .filter((mechanism) => delayedMechanismIds.has(mechanism.id))
     .flatMap((mechanism) => {

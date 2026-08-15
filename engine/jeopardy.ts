@@ -27,6 +27,15 @@ import {
 const SELF_EXPOSING = /\b(?:i|me|my|myself|personally|in person)\b[^.;]{0,60}\b(?:go|going|goes|fly|flying|flight|travel|visit|land|arrive|walk|drive|sail|meet)\b|\b(?:take me|fly me|bring me|get me|put me)\b/i;
 /** Deliberately shedding the protection that would normally attend them. */
 const UNPROTECTED = /\b(?:no (?:military )?escort|without escort|unescorted|no security|without security|alone|unarmed|no protection|without protection|no detail|dismiss the detail)\b/i;
+/**
+ * Acts that are grave in themselves, whoever carries them out: irreversible,
+ * unlawful, or of a kind that cannot be walked back once begun. The player's
+ * own safety is not the only thing that can be staked.
+ */
+const EXTREME_ACT = /\b(?:assassinat\w*|kill\w*|murder\w*|execut(?:e|ion)\w*|liquidat\w*|decapitat\w*|coup\b|overthrow\w*|depos(?:e|ing)|invad\w*|invasion|first strike|nuclear (?:strike|launch|attack)|launch (?:the )?(?:missiles|nukes)|sabotag\w*|false flag|blackmail\w*|brib\w*|imprison\w*|suspend (?:the )?(?:constitution|congress|elections?)|martial law|purg(?:e|ing))\b/i;
+/** Doing it to a head of state or an equivalent principal raises it again. */
+const AGAINST_PRINCIPAL = /\b(?:castro|khrushchev|premier|president|prime minister|chairman|head of state|leader)\b/i;
+
 /** Language that treats institutional constraint as an obstacle to override. */
 const OVERRIDE = /\b(?:whatever it takes|i will not take no|no matter what|regardless|override|bypass|ignore (?:the|any)|do it anyway|i don'?t care|right now|immediately)\b/i;
 
@@ -54,6 +63,8 @@ export const assessJeopardy = (
   const refusableMechanismIds: Id[] = [];
   let physical = 0;
   let institutional = 0;
+  let operational = 0;
+  const extremeMechanismIds: Id[] = [];
   const directive = graph.mechanisms.map((mechanism) => mechanism.specifiedDetail).join(' ');
 
   for (const mechanism of graph.mechanisms) {
@@ -94,6 +105,30 @@ export const assessJeopardy = (
     }
   }
 
+  for (const mechanism of graph.mechanisms) {
+    const text = `${mechanism.specifiedDetail} ${mechanism.objective}`;
+    if (!EXTREME_ACT.test(text)) continue;
+    extremeMechanismIds.push(mechanism.id);
+    operational += 45;
+    reasons.push('The act itself is of a kind that cannot be undone once begun.');
+    // Aimed at a principal — a head of state or equivalent — whether named as
+    // an entity or only in the text.
+    const principal = mechanism.targetIds.some((id) => {
+      const entity = state.entities[id];
+      return entity?.kind === 'PERSON' && entity.power >= 40;
+    }) || AGAINST_PRINCIPAL.test(text);
+    if (principal) {
+      operational += 25;
+      reasons.push('It is aimed at a head of state, where failure and success are both events of the first order.');
+    }
+    const dangerMetric = state.manifest.metricDefinitions.find((definition) =>
+      definition.dangerAbove !== undefined && state.metrics[definition.id] >= definition.dangerAbove);
+    if (dangerMetric) {
+      operational += 20;
+      reasons.push(`${dangerMetric.label} is already past its danger threshold; an act this size lands on top of it.`);
+    }
+  }
+
   if (UNPROTECTED.test(directive)) {
     physical += 25;
     institutional += 15;
@@ -107,9 +142,11 @@ export const assessJeopardy = (
   return {
     physical: Math.min(100, physical),
     institutional: Math.min(100, institutional),
+    operational: Math.min(100, operational),
     reasons: [...new Set(reasons)],
     exposingMechanismIds,
     refusableMechanismIds,
+    extremeMechanismIds,
   };
 };
 
@@ -139,7 +176,12 @@ export const escalateWithRefusal = (
 };
 
 export const jeopardyIsGrave = (jeopardy: JeopardyAssessment) =>
-  jeopardy.physical >= 60 || jeopardy.institutional >= 60;
+  jeopardy.physical >= 60 || jeopardy.institutional >= 60 || jeopardy.operational >= 60;
+
+/** How far outside ordinary business the directive sits, 0–1. Drives how wide
+ * the outcome distribution should be and how large its effects may run. */
+export const boldness = (jeopardy: JeopardyAssessment) =>
+  Math.min(1, Math.max(jeopardy.physical, jeopardy.institutional, jeopardy.operational) / 100);
 
 /**
  * The catastrophic effects a grave directive must be able to produce. These are
@@ -182,6 +224,43 @@ export const catastropheEffects = (
         engagement: 'ENGAGES_STRONGLY',
         cause: 'The loss of the head of government in contested space removed every restraint that depended on him.',
         dependencies: [playerId],
+      });
+    }
+  }
+
+  if (jeopardy.operational >= 60) {
+    const escalation = state.manifest.metricRoles?.escalation;
+    if (escalation && escalation in state.metrics) {
+      effects.push({
+        id: 'catastrophe_operation_exposed',
+        mechanismId: jeopardy.extremeMechanismIds[0] ?? 'jeopardy',
+        targetType: 'METRIC',
+        targetId: escalation,
+        field: 'value',
+        direction: 'POSITIVE',
+        impactClass: 'SEVERE',
+        confidence: 'MEDIUM',
+        engagement: 'ENGAGES_STRONGLY',
+        cause: 'The operation was exposed before it could be disowned, and the other side read it as an act of war.',
+        dependencies: jeopardy.extremeMechanismIds.length ? jeopardy.extremeMechanismIds : [playerId],
+        immediate: true,
+      });
+    }
+    const support = state.manifest.metricRoles?.support ?? state.manifest.metricRoles?.cohesion;
+    if (support && support in state.metrics) {
+      effects.push({
+        id: 'catastrophe_operation_disgrace',
+        mechanismId: jeopardy.extremeMechanismIds[0] ?? 'jeopardy',
+        targetType: 'METRIC',
+        targetId: support,
+        field: 'value',
+        direction: 'NEGATIVE',
+        impactClass: 'SEVERE',
+        confidence: 'MEDIUM',
+        engagement: 'ENGAGES_STRONGLY',
+        cause: 'What was ordered in secret did not stay secret, and the standing of the office did not survive the telling.',
+        dependencies: jeopardy.extremeMechanismIds.length ? jeopardy.extremeMechanismIds : [playerId],
+        immediate: true,
       });
     }
   }
@@ -231,7 +310,7 @@ export const catastropheEffects = (
 
 /** A directive this exposed must have a real chance of ending badly. */
 export const catastropheProbability = (jeopardy: JeopardyAssessment) => {
-  const worst = Math.max(jeopardy.physical, jeopardy.institutional);
+  const worst = Math.max(jeopardy.physical, jeopardy.institutional, jeopardy.operational);
   if (worst < 60) return 0;
   return Math.min(0.45, 0.12 + ((worst - 60) / 40) * 0.3);
 };

@@ -1,5 +1,6 @@
 import {
   ActorAction,
+  ImpactClass,
   Adjudication,
   FeasibilityFinding,
   StrategyGraph,
@@ -63,12 +64,28 @@ export const validateActorActions = (
   return issues;
 });
 
+const IMPACT_ORDER: ImpactClass[] = ['NONE', 'TRIVIAL', 'MINOR', 'MODERATE', 'MAJOR', 'SEVERE', 'SYSTEMIC'];
+
+/** Scenario calibration describes what NORMALLY happens in a turn. A directive
+ * that stakes the player's person, authority, or an irreversible act is not
+ * normal business, and is permitted one band beyond the ordinary ceiling. */
+const permittedClasses = (allowed: ImpactClass[], graveJeopardy: boolean): Set<ImpactClass> => {
+  const permitted = new Set(allowed);
+  if (!graveJeopardy) return permitted;
+  const highest = allowed.reduce((best, current) =>
+    IMPACT_ORDER.indexOf(current) > IMPACT_ORDER.indexOf(best) ? current : best, 'NONE' as ImpactClass);
+  const next = IMPACT_ORDER[Math.min(IMPACT_ORDER.length - 1, IMPACT_ORDER.indexOf(highest) + 1)];
+  permitted.add(next);
+  return permitted;
+};
+
 export const validateAdjudicationProposal = (
   adjudication: Adjudication,
   graph: StrategyGraph,
   feasibility: FeasibilityFinding[],
   state: WorldState,
   actorActions: ActorAction[] = [],
+  graveJeopardy = false,
 ): ValidationIssue[] => {
   const issues: ValidationIssue[] = [];
   const mechanisms = new Map(graph.mechanisms.map((mechanism) => [mechanism.id, mechanism]));
@@ -121,7 +138,8 @@ export const validateAdjudicationProposal = (
       (!rule.mechanismKind || rule.mechanismKind === mechanism?.kind)
       && (!rule.targetType || rule.targetType === effect.targetType)
       && (!rule.targetId || rule.targetId === effect.targetId));
-    if (calibration.length && !calibration.some((rule) => rule.allowedImpactClasses.includes(effect.impactClass))) {
+    if (calibration.length && !calibration.some((rule) =>
+      permittedClasses(rule.allowedImpactClasses, graveJeopardy).has(effect.impactClass))) {
       issues.push({ code: 'EFFECT_OUTSIDE_CALIBRATION', severity: 'ERROR', message: `${effect.id} uses ${effect.impactClass} outside scenario calibration.` });
     }
     if (effect.proposedDelta !== undefined) {

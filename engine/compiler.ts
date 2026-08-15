@@ -180,7 +180,12 @@ export const compileDeterministically = (directive: string, state: WorldState): 
     sequencing: mechanisms.map((item) => item.id),
     contingencies: [],
     explicitRisks: [],
-    unspecified: mechanisms.filter((item) => item.kind === 'OTHER').map((item) => `Mechanism for “${item.specifiedDetail}” is unspecified.`),
+    unspecified: mechanisms
+      // A method left to a capable institution is delegated, not missing: the
+      // player names the end, the expert body supplies the means. Only an
+      // objective with no one to carry it out is genuinely underspecified.
+      .filter((item) => item.kind === 'OTHER' && !item.targetIds.length)
+      .map((item) => `Mechanism for “${item.specifiedDetail}” is unspecified.`),
     communicationStyleIsMechanism: /speech|message|signal|tone|publicly|privately/i.test(directive),
     requestedOutcomes: extractRequestedOutcomes(directive),
     assertedExternalEvents,
@@ -251,7 +256,7 @@ export const compileStrategy = async (
     const result = await gateway.callJson('strategy_compiler', [
       {
         role: 'system',
-        content: 'You are a literal strategy compiler. targetIds are ONLY the actors whose decisions or behaviour a mechanism acts upon. A place named as a destination, origin, or route is NEVER a target — travelling to a country does not target the forces stationed there. An asset the player uses (their aircraft, their staff) is an instrument, not a target. Decompose the directive into: mechanisms — ONLY actions the player can personally attempt or order (call, ask, demand, prepare, allocate, announce); requestedOutcomes — desired results that depend on another actor or on feasibility (a resignation obtained, an agreement reached); assertedExternalEvents — text that declares another actor’s behavior, emotion, or an outcome as already decided (never convert these into mechanisms or targets); rationale — the player’s stated theory of leverage; unresolvedReferences — people, offices, or institutions relevant to an attempt but absent from the permittedContext entity list. Extract only what is supplied or reasonably implied. Do not praise, repair, optimize, or invent leverage. Preserve vague mechanisms as vague and list missing details under unspecified.',
+        content: 'You are a literal strategy compiler. When the player directs a capable institution to achieve an end — an intelligence service, a military command, a department — the METHOD IS DELEGATED, not missing: record the objective and the body charged with it, and do NOT list the absence of tradecraft, operational detail, or success criteria under unspecified. Reserve unspecified for an objective with no one named to carry it out. targetIds are ONLY the actors whose decisions or behaviour a mechanism acts upon. A place named as a destination, origin, or route is NEVER a target — travelling to a country does not target the forces stationed there. An asset the player uses (their aircraft, their staff) is an instrument, not a target. Decompose the directive into: mechanisms — ONLY actions the player can personally attempt or order (call, ask, demand, prepare, allocate, announce); requestedOutcomes — desired results that depend on another actor or on feasibility (a resignation obtained, an agreement reached); assertedExternalEvents — text that declares another actor’s behavior, emotion, or an outcome as already decided (never convert these into mechanisms or targets); rationale — the player’s stated theory of leverage; unresolvedReferences — people, offices, or institutions relevant to an attempt but absent from the permittedContext entity list. Extract only what is supplied or reasonably implied. Do not praise, repair, optimize, or invent leverage. Preserve vague mechanisms as vague and list missing details under unspecified.',
       },
       {
         role: 'user',

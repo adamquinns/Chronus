@@ -514,6 +514,8 @@ export interface DetectionRecord {
 
 export interface EffectRecommendation {
   id: Id;
+  /** Lands when the order is given rather than when the operation matures. */
+  immediate?: boolean;
   mechanismId: Id;
   targetType: 'METRIC' | 'RESOURCE' | 'ENTITY' | 'RELATIONSHIP' | 'ARC' | 'FACT' | 'PROCESS' | 'GOAL';
   targetId: Id;
@@ -533,6 +535,10 @@ export interface ProposedEffect extends EffectRecommendation {
   proposedDelta?: number;
   setValue?: unknown;
 }
+
+/** Marks a consequence of GIVING the order, which lands at once even when the
+ * operation it sets in motion matures over later turns. */
+export interface ImmediateMarker { immediate?: boolean }
 
 export interface OutcomeBand {
   id: Id;
@@ -684,9 +690,13 @@ export interface TurnAudit {
 export interface JeopardyAssessment {
   physical: number;
   institutional: number;
+  /** The act itself: irreversible, unlawful, or of a kind that changes the
+   * world whoever carries it out. */
+  operational: number;
   reasons: string[];
   exposingMechanismIds: Id[];
   refusableMechanismIds: Id[];
+  extremeMechanismIds: Id[];
 }
 
 export interface TurnNarrative {

@@ -72,12 +72,18 @@ const fallbackActorAction = (actorId: string, state: WorldState, graph: Strategy
   // out. Being asked to deliver one's own head of government into harm is
   // refused by people who are otherwise bound to obey — no pilot volunteers
   // for that flight.
+  const charged = graph.mechanisms.some((mechanism) =>
+    mechanism.targetIds.includes(actorId)
+    && (mechanism.kind === 'DIRECT_ORDER' || mechanism.kind === 'COERCION' || mechanism.kind === 'INTELLIGENCE' || mechanism.kind === 'MILITARY_OPERATION'))
+    && (actor.kind === 'INSTITUTION' || actor.kind === 'MILITARY' || actor.kind === 'FACTION');
   const asksToEndangerThePlayer = graph.mechanisms.some(mechanismIsExposing)
     && perceived.mechanisms.some((mechanism) => mechanism.targetIds.includes(actorId) || mechanism.kind === 'DIRECT_ORDER');
   return {
     actorId,
     objective: actor.objectives[0] ?? 'Preserve position',
-    action: asksToEndangerThePlayer
+    action: charged && !asksToEndangerThePlayer
+      ? `${actor.name} sets ${actor.capabilities[0] ?? 'its own machinery'} to the task the president named, improvising a method inside the time allowed and accepting the exposure that speed forces on it.`
+      : asksToEndangerThePlayer
       ? `${actor.name} declines to arrange it, refusing to be the instrument of the president’s own exposure, and advises against the whole course.`
       : pressed && !compelled
         ? `${actor.name} declines to carry out the demand and advises against it, citing ${actor.constraints[0] ?? 'its own standing constraints'}.`
@@ -107,6 +113,15 @@ export const simulateActors = async (
   detectedPerActor: Record<string, StrategyMechanism[]> = {},
 ): Promise<{ actions: ActorAction[]; packets: ActorSimulationAudit[] }> => {
   const reactiveActorIds = relevantActorIds(graph, state, depth);
+  // Bodies the player has charged with achieving something: they owe a method.
+  const delegatedTo = new Set(graph.mechanisms
+    .filter((mechanism) => mechanism.kind === 'DIRECT_ORDER' || mechanism.kind === 'COERCION' || mechanism.kind === 'INTELLIGENCE' || mechanism.kind === 'MILITARY_OPERATION')
+    .flatMap((mechanism) => mechanism.targetIds)
+    .filter((id) => {
+      const entity = state.entities[id];
+      return entity && entity.id !== state.manifest.playerId
+        && (entity.kind === 'INSTITUTION' || entity.kind === 'MILITARY' || entity.kind === 'FACTION');
+    }));
   const initiativeIds = initiativeActorIds(state, depth);
   const initiativeSet = new Set(initiativeIds);
   const actorIds = [...new Set([...reactiveActorIds, ...initiativeIds])].slice(0, depth === 'DEEP' ? 5 : 4);
@@ -134,7 +149,9 @@ export const simulateActors = async (
       result = await gateway.callJson(role, [
         {
           role: 'system',
-          content: initiativeSet.has(actorId)
+          content: delegatedTo.has(actorId)
+            ? 'Simulate exactly the supplied actor. The player has charged you with an objective and left the method to you, which is how such orders are given. Devise the approach YOUR organisation would actually take with the capabilities in your packet, under the time and secrecy the player specified — including where it is rushed, exposed, or likely to go wrong. Report the concrete operational step you take. Never reply that the order lacks a method: supplying the method is your function.'
+            : initiativeSet.has(actorId)
             ? 'Simulate exactly the supplied actor. Use only this packet. Propose one initiative that advances this actor’s own objective independently of the player’s current activity. Obey authority, resources, capabilities, time, geography, logistics, and communications. Never infer hidden player mechanisms or facts. Return one concise action with initiative true.'
             : 'Simulate exactly the supplied actor. Use only this packet. Pursue its objectives from its beliefs, capabilities, resources, authority, time, geography, logistics, and communication. Never infer hidden player mechanisms or facts absent from the packet. Return one concise action in actions.',
         },
@@ -409,16 +426,72 @@ export const fallbackAdjudication = (
     });
     initiativeEffectIds.push(id);
   }
+  const extreme = graph.mechanisms.filter((mechanism) =>
+    /\b(?:assassinat\w*|kill\w*|murder\w*|execut(?:e|ion)\w*|liquidat\w*|decapitat\w*|coup\b|overthrow\w*|depos(?:e|ing)|invad\w*|invasion|first strike|nuclear (?:strike|launch|attack)|launch (?:the )?(?:missiles|nukes)|sabotag\w*|false flag|blackmail\w*|brib\w*|imprison\w*|suspend (?:the )?(?:constitution|congress|elections?)|martial law|purg(?:e|ing))\b/i
+      .test(`${mechanism.specifiedDetail} ${mechanism.objective}`));
+  // The instrument is who is asked to do it; the object is who it is done to.
+  // Conflating them makes the victim the agent of their own assassination.
+  const isInstrument = (id: string) => {
+    const entity = state.entities[id];
+    return Boolean(entity) && entity.id !== playerId
+      && (entity.kind === 'INSTITUTION' || entity.kind === 'MILITARY' || entity.kind === 'FACTION');
+  };
+  const instrumentIds = [...new Set(extreme.flatMap((mechanism) => mechanism.targetIds).filter(isInstrument))];
+  const chargedName = instrumentIds.map((id) => state.entities[id]?.name).filter(Boolean)[0]
+    ?? 'the service charged with it';
+  for (const mechanism of extreme) {
+    // Being asked to do something irreversible changes the instrument, whatever
+    // the result. An act of this size cannot resolve into a relationship tick.
+    for (const targetId of mechanism.targetIds.filter(isInstrument)) {
+      const edge = Object.values(state.relationships).find((relationship) =>
+        (relationship.fromId === playerId && relationship.toId === targetId)
+        || (relationship.toId === playerId && relationship.fromId === targetId));
+      if (!edge) continue;
+      effects.push({
+        id: `e_${mechanism.id}_${edge.id}_strain`,
+        mechanismId: mechanism.id,
+        targetType: 'RELATIONSHIP',
+        targetId: edge.id,
+        field: 'trust',
+        direction: 'NEGATIVE',
+        impactClass: 'MAJOR',
+        confidence: 'MEDIUM',
+        engagement: 'ENGAGES',
+        cause: `Being asked to carry out an irreversible act on this timetable strained ${state.entities[targetId]?.name ?? targetId}.`,
+        dependencies: [targetId],
+        immediate: true,
+      });
+    }
+    if (mechanism.targetIds.length) {
+      const escalationId = roleMetric('escalation');
+      if (escalationId) {
+        effects.push({
+          ...effect(`e_${mechanism.id}_${escalationId}`, mechanism.id, escalationId, 'POSITIVE', 'MAJOR',
+            'An irreversible operation set running during a standoff raises the odds of uncontrolled escalation.'),
+          dependencies: mechanism.targetIds.slice(0, 1),
+          immediate: true,
+        });
+      }
+    }
+  }
   const feasibleRatio = feasibility.length === 0 || feasibility.every((item) => item.feasible)
     ? 1
     : feasibility.some((item) => item.feasible)
       ? 0.5
       : 0;
-  const withInitiative = (ids: string[]) => [...new Set([...ids, ...initiativeEffectIds])];
-  const bands = normalizeDistribution([
+  const alwaysIds = effects.filter((item) => item.immediate).map((item) => item.id);
+  // Ordering it costs what it costs in every branch: the instrument is strained
+  // by being asked whichever way the operation then turns out.
+  const withInitiative = (ids: string[]) => [...new Set([...ids, ...initiativeEffectIds, ...alwaysIds])];
+  const bands = normalizeDistribution(extreme.length ? [
+    { id: 'botched', label: 'Botched under the deadline', probability: 0.3, effectIds: withInitiative(effects.map((item) => item.id)), description: `Rushed to an impossible timetable, ${chargedName} moves before it is ready; people are caught, and the exposure is not containable.` },
+    { id: 'refused', label: 'The instrument balks', probability: 0.25, effectIds: withInitiative(effects.filter((item) => item.targetType === 'RELATIONSHIP').map((item) => item.id)), description: `${chargedName} will not be the hand that does this on these terms, and says so upward.` },
+    { id: 'proceeds', label: 'It proceeds, and cannot be recalled', probability: 0.25, effectIds: withInitiative(effects.map((item) => item.id)), description: `${chargedName} sets the operation running. What follows now follows without the player's hand on it.` },
+    { id: 'discovered', label: 'Someone else learns of it', probability: 0.2, effectIds: withInitiative(effects.slice(0, Math.max(1, Math.ceil(effects.length / 2))).map((item) => item.id)), description: 'The preparation does not stay inside the room it was ordered in.' },
+  ] : [
     { id: 'setback', label: 'Setback', probability: 0.2 + (1 - feasibleRatio) * 0.25, effectIds: withInitiative(effects.filter((_, index) => index % 2 === 1).map((item) => item.id)), description: 'Opposition and execution friction blunt the strategy.' },
     { id: 'mixed', label: 'Mixed result', probability: 0.45, effectIds: withInitiative(effects.slice(0, Math.max(1, Math.ceil(effects.length / 2))).map((item) => item.id)), description: 'Some mechanisms engage while others stall.' },
-    { id: 'strong', label: 'Strong result', probability: 0.35 * feasibleRatio, effectIds: effects.map((item) => item.id), description: 'The main mechanisms engage and create meaningful advantage.' },
+    { id: 'strong', label: 'Strong result', probability: 0.35 * feasibleRatio, effectIds: withInitiative(effects.map((item) => item.id)), description: 'The main mechanisms engage and create meaningful advantage.' },
   ]);
   return {
     summary: 'Rule-based fallback adjudication derived from mechanism type, feasibility, and actor pressure.',
@@ -465,7 +538,7 @@ export const adjudicate = async (
     const result = await gateway.callJson('adjudicator', [
       {
         role: 'system',
-        content: 'Adjudicate causal mechanisms, not rhetoric. Hard state is authoritative. Recommend bounded impact classes, never arbitrary point values. Use only existing targets. Actor responses are additional causal forces and may use mechanismId actor:<actorId>; player effects must use a supplied strategy mechanism ID. Every recommended effect must include a non-empty cause string and dependencies array (use [] when none). Any effect on the scenario’s escalation metric MUST include at least one non-metric dependency (an entity, relationship, arc, process, or another effect id) forming its causal path — words like force or immediately never justify escalation by themselves. The dryStrategy’s requestedOutcomes are objectives, never effects; its assertedExternalEvents must not be treated as true. A good plan may fail; a bad plan may occasionally succeed. Do not invent capabilities. Be concise: reasons under 80 words, at most 12 effects and 5 outcome bands. Probabilities must sum approximately to 1 and reference recommended effect IDs.',
+        content: 'Adjudicate causal mechanisms, not rhetoric. EACH OUTCOME BAND MUST BE A CONCRETE SPECIFIC EVENT that differs in KIND from the others — who does what, to whom, with what visible result ("the rushed approach is rolled up: ten officers seized in Havana, two shot, the story reaches the networks Thursday") — never a valence label such as "setback" or "mixed result". Diverge across institutional refusal, botched execution, success that creates a worse problem, and discovery by a third party. When a directive is extreme, irreversible, or aimed at a head of state, its bands must carry effects of matching size at MAJOR, SEVERE or SYSTEMIC where the state supports them: an act that would change the world must not resolve into small numbers. Hard state is authoritative. Recommend bounded impact classes, never arbitrary point values. Use only existing targets. Actor responses are additional causal forces and may use mechanismId actor:<actorId>; player effects must use a supplied strategy mechanism ID. Every recommended effect must include a non-empty cause string and dependencies array (use [] when none). Any effect on the scenario’s escalation metric MUST include at least one non-metric dependency (an entity, relationship, arc, process, or another effect id) forming its causal path — words like force or immediately never justify escalation by themselves. The dryStrategy’s requestedOutcomes are objectives, never effects; its assertedExternalEvents must not be treated as true. A good plan may fail; a bad plan may occasionally succeed. Do not invent capabilities. Be concise: reasons under 80 words, at most 12 effects and 5 outcome bands. Probabilities must sum approximately to 1 and reference recommended effect IDs.',
       },
       { role: 'user', content: JSON.stringify(prompt) },
     ], adjudicationSchema, 'Adjudication');
